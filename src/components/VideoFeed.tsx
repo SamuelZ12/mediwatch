@@ -24,6 +24,7 @@ export default function VideoFeed({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overshootRef = useRef<RealtimeVision | null>(null);
+  const activeProviderRef = useRef<'gemini' | 'overshoot' | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<AnalysisResult | null>(null);
@@ -47,7 +48,7 @@ export default function VideoFeed({
     }
   };
 
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
     if (videoRef.current?.srcObject) {
       const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
       tracks.forEach((track) => track.stop());
@@ -63,7 +64,8 @@ export default function VideoFeed({
       overshootRef.current = null;
     }
     setIsAnalyzing(false);
-  };
+    activeProviderRef.current = null;
+  }, [setIsAnalyzing]);
 
   const captureFrame = useCallback((): string | null => {
     if (!videoRef.current || !canvasRef.current) return null;
@@ -133,16 +135,31 @@ export default function VideoFeed({
   }, []);
 
   const startOvershootAnalysis = useCallback(() => {
+    // Validate API key before starting
+    if (!process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY) {
+      setError('Overshoot API key not configured');
+      return;
+    }
+
+    // Stop manual camera - Overshoot SDK manages its own
+    if (videoRef.current?.srcObject) {
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      tracks.forEach((track) => track.stop());
+      videoRef.current.srcObject = null;
+      setIsStreaming(false);
+    }
+
     overshootRef.current = new RealtimeVision({
       apiUrl: 'https://cluster1.overshoot.ai/api/v0.2',
-      apiKey: process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY || '',
+      apiKey: process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY,
       prompt: OVERSHOOT_PROMPT,
       source: { type: 'camera', cameraFacing: 'user' },
       onResult: (result: StreamInferenceResult) => {
         if (!result.ok) {
-          console.error('Overshoot analysis error:', result.error);
+          setError(`Analysis error: ${result.error}`);
           return;
         }
+        setError(null);
         const parsed = parseOvershootResult(result.result);
         setLastResult(parsed);
         if (parsed.emergency && parsed.confidence > 0.7) {
@@ -150,11 +167,13 @@ export default function VideoFeed({
         }
       },
       onError: (error: Error) => {
-        console.error('Overshoot error:', error);
+        setError(`Connection error: ${error.message}`);
+        setIsAnalyzing(false);
+        activeProviderRef.current = null;
       },
     });
     overshootRef.current.start();
-  }, [onEmergencyDetected, parseOvershootResult]);
+  }, [onEmergencyDetected, parseOvershootResult, setIsAnalyzing]);
 
   const stopOvershootAnalysis = useCallback(() => {
     overshootRef.current?.stop();
@@ -173,8 +192,10 @@ export default function VideoFeed({
         }
       }
       setIsAnalyzing(false);
+      activeProviderRef.current = null;
     } else {
       // Start analysis
+      activeProviderRef.current = provider;
       if (provider === 'overshoot') {
         startOvershootAnalysis();
       } else {
@@ -186,11 +207,30 @@ export default function VideoFeed({
     }
   };
 
+  // Handle provider switch while analyzing - clean up old provider
+  useEffect(() => {
+    if (isAnalyzing && activeProviderRef.current && activeProviderRef.current !== provider) {
+      // Stop the old provider
+      if (activeProviderRef.current === 'overshoot') {
+        stopOvershootAnalysis();
+      } else {
+        if (analysisIntervalRef.current) {
+          clearInterval(analysisIntervalRef.current);
+          analysisIntervalRef.current = null;
+        }
+      }
+      setIsAnalyzing(false);
+      setLastResult(null);
+      activeProviderRef.current = null;
+    }
+  }, [provider, isAnalyzing, stopOvershootAnalysis, setIsAnalyzing]);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopCamera();
     };
-  }, []);
+  }, [stopCamera]);
 
   const getStatusColor = () => {
     if (!lastResult) return 'bg-gray-500';
