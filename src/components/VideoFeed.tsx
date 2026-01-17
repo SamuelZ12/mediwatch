@@ -153,8 +153,8 @@ export default function VideoFeed({
     }
 
     overshootRef.current = new RealtimeVision({
-      apiUrl: 'https://api.overshoot.ai',
-      apiKey: process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY,
+      apiUrl: '/api/overshoot',
+      apiKey: process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY || 'proxy', // Key handled server-side
       prompt: OVERSHOOT_PROMPT,
       source: { type: 'camera', cameraFacing: 'user' },
       backend: 'overshoot',
