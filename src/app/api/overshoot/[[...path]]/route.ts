@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const OVERSHOOT_API_URL = 'https://api.overshoot.ai';
+const OVERSHOOT_API_URL =
+  process.env.OVERSHOOT_API_URL ?? 'https://cluster1.overshoot.ai/api/v0.2';
 
 async function proxyRequest(request: NextRequest, params: { path?: string[] }) {
   const path = params.path?.join('/') ?? '';

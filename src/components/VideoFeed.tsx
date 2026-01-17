@@ -15,6 +15,8 @@ interface VideoFeedProps {
 
 const OVERSHOOT_PROMPT = `Analyze for medical emergencies: fall, choking, seizure, unconscious, distress.
 Return JSON: {"emergency": boolean, "type": string, "confidence": 0-1, "description": "brief"}`;
+const OVERSHOOT_API_URL =
+  process.env.NEXT_PUBLIC_OVERSHOOT_API_URL ?? 'https://cluster1.overshoot.ai/api/v0.2';
 
 export default function VideoFeed({
   onEmergencyDetected,
@@ -172,7 +174,8 @@ export default function VideoFeed({
 
   const startOvershootAnalysis = useCallback(async () => {
     // Validate API key before starting
-    if (!process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY) {
+    const overshootKey = process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY;
+    if (!overshootKey) {
       setError('Overshoot API key not configured');
       return;
     }
@@ -185,8 +188,8 @@ export default function VideoFeed({
     }
 
     overshootRef.current = new RealtimeVision({
-      apiUrl: '/api/overshoot',
-      apiKey: process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY || 'proxy',
+      apiUrl: OVERSHOOT_API_URL,
+      apiKey: overshootKey,
       prompt: OVERSHOOT_PROMPT,
       source: { type: 'camera', cameraFacing: 'user' },
       backend: 'overshoot',
