@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { Camera, CameraOff, AlertTriangle, Activity } from 'lucide-react';
 import { RealtimeVision, type StreamInferenceResult } from '@overshoot/sdk';
+import { Button, Badge } from '@/components/ui';
 import type { AnalysisResult, EmergencyType } from '@/types';
 
 interface VideoFeedProps {
@@ -149,14 +150,25 @@ export default function VideoFeed({
       const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
       tracks.forEach((track) => track.stop());
       videoRef.current.srcObject = null;
-      setIsStreaming(false);
     }
 
     overshootRef.current = new RealtimeVision({
-      apiUrl: 'https://cluster1.overshoot.ai/api/v0.2',
+      apiUrl: 'https://api.overshoot.ai',
       apiKey: process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY,
       prompt: OVERSHOOT_PROMPT,
       source: { type: 'camera', cameraFacing: 'user' },
+      backend: 'overshoot',
+      debug: true,
+      outputSchema: {
+        type: 'object',
+        properties: {
+          emergency: { type: 'boolean' },
+          type: { type: 'string', enum: ['fall', 'choking', 'seizure', 'unconscious', 'distress', 'normal'] },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+          description: { type: 'string' },
+        },
+        required: ['emergency', 'type', 'confidence', 'description'],
+      },
       processing: {
         clip_length_seconds: 1,
         delay_seconds: 1,
@@ -181,6 +193,7 @@ export default function VideoFeed({
         console.error('[Overshoot] onError:', error);
         setError(`Connection error: ${error.message}`);
         setIsAnalyzing(false);
+        setIsStreaming(false);
         activeProviderRef.current = null;
       },
     });
@@ -189,17 +202,35 @@ export default function VideoFeed({
       console.log('[Overshoot] Starting RealtimeVision...');
       await overshootRef.current.start();
       console.log('[Overshoot] RealtimeVision started successfully');
+
+      // Connect Overshoot's media stream to the video element for preview
+      const mediaStream = overshootRef.current.getMediaStream();
+      if (mediaStream && videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+        setIsStreaming(true);
+        console.log('[Overshoot] Media stream connected to video element');
+      } else {
+        console.warn('[Overshoot] Could not get media stream for preview');
+      }
     } catch (err) {
       console.error('[Overshoot] Failed to start:', err);
       setError(`Failed to start Overshoot: ${err instanceof Error ? err.message : 'Unknown error'}`);
       setIsAnalyzing(false);
+      setIsStreaming(false);
       activeProviderRef.current = null;
     }
   }, [onEmergencyDetected, parseOvershootResult, setIsAnalyzing]);
 
   const stopOvershootAnalysis = useCallback(() => {
-    overshootRef.current?.stop();
-    overshootRef.current = null;
+    if (overshootRef.current) {
+      overshootRef.current.stop();
+      overshootRef.current = null;
+    }
+    // Clear the video element's stream
+    if (videoRef.current?.srcObject) {
+      videoRef.current.srcObject = null;
+    }
+    setIsStreaming(false);
   }, []);
 
   const toggleAnalysis = async () => {
@@ -255,9 +286,9 @@ export default function VideoFeed({
   }, [stopCamera]);
 
   const getStatusColor = () => {
-    if (!lastResult) return 'bg-gray-500';
+    if (!lastResult) return 'bg-slate-500';
     if (lastResult.emergency) return 'bg-red-500';
-    return 'bg-green-500';
+    return 'bg-emerald-500';
   };
 
   return (
@@ -276,8 +307,8 @@ export default function VideoFeed({
 
       {/* Overlay when not streaming */}
       {!isStreaming && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-          <div className="text-center text-gray-400">
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+          <div className="text-center text-slate-400">
             <CameraOff className="w-16 h-16 mx-auto mb-4" />
             <p>Camera not active</p>
           </div>
@@ -286,7 +317,7 @@ export default function VideoFeed({
 
       {/* Error message */}
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/90">
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90">
           <div className="text-center text-red-400 p-4">
             <AlertTriangle className="w-12 h-12 mx-auto mb-2" />
             <p>{error}</p>
@@ -304,19 +335,24 @@ export default function VideoFeed({
 
       {/* Analysis status and provider selector */}
       <div className="absolute top-4 right-4 flex items-center gap-2">
+        <label className="sr-only" htmlFor="provider-select">
+          Select AI provider
+        </label>
         <select
+          id="provider-select"
           value={provider}
           onChange={(e) => setProvider(e.target.value as 'gemini' | 'overshoot')}
-          className="bg-gray-700 text-white rounded px-2 py-1 text-sm border border-gray-600 focus:outline-none focus:border-blue-500"
+          className="select"
+          aria-label="Select AI provider for video analysis"
         >
           <option value="overshoot">Overshoot</option>
           <option value="gemini">Gemini</option>
         </select>
         {isAnalyzing && (
-          <div className="flex items-center gap-2 bg-black/50 px-3 py-1 rounded">
-            <Activity className="w-4 h-4 text-blue-400 animate-pulse" />
-            <span className="text-white text-sm">Monitoring</span>
-          </div>
+          <Badge variant="info" pulse>
+            <Activity className="w-3 h-3 mr-1" />
+            Monitoring
+          </Badge>
         )}
       </div>
 
@@ -326,30 +362,28 @@ export default function VideoFeed({
           <div className="flex justify-between items-center">
             <span
               className={`text-sm font-medium ${
-                lastResult.emergency ? 'text-red-400' : 'text-green-400'
+                lastResult.emergency ? 'text-red-400' : 'text-emerald-400'
               }`}
             >
               {lastResult.emergency
                 ? `${lastResult.type.toUpperCase()} DETECTED`
                 : 'Normal'}
             </span>
-            <span className="text-gray-400 text-xs">
+            <span className="text-slate-400 text-xs">
               {Math.round(lastResult.confidence * 100)}% confidence
             </span>
           </div>
-          <p className="text-gray-300 text-xs mt-1 truncate">{lastResult.description}</p>
+          <p className="text-slate-300 text-xs mt-1 truncate">{lastResult.description}</p>
         </div>
       )}
 
       {/* Controls */}
       <div className="absolute bottom-4 left-4 right-4 flex gap-2">
-        <button
+        <Button
+          variant={isStreaming ? 'danger' : 'secondary'}
           onClick={isStreaming ? stopCamera : startCamera}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-medium transition ${
-            isStreaming
-              ? 'bg-red-600 hover:bg-red-700 text-white'
-              : 'bg-blue-600 hover:bg-blue-700 text-white'
-          }`}
+          className="flex-1"
+          aria-label={isStreaming ? 'Stop camera' : 'Start camera'}
         >
           {isStreaming ? (
             <>
@@ -362,20 +396,18 @@ export default function VideoFeed({
               Start Camera
             </>
           )}
-        </button>
+        </Button>
 
         {isStreaming && (
-          <button
+          <Button
+            variant={isAnalyzing ? 'warning' : 'success'}
             onClick={toggleAnalysis}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-medium transition ${
-              isAnalyzing
-                ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                : 'bg-green-600 hover:bg-green-700 text-white'
-            }`}
+            className="flex-1"
+            aria-label={isAnalyzing ? 'Stop AI analysis' : 'Start AI analysis'}
           >
             <Activity className="w-4 h-4" />
             {isAnalyzing ? 'Stop Analysis' : 'Start Analysis'}
-          </button>
+          </Button>
         )}
       </div>
     </div>
