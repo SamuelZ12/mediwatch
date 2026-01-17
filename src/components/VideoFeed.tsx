@@ -110,10 +110,12 @@ export default function VideoFeed({
   }, [captureFrame, location, onEmergencyDetected]);
 
   const parseOvershootResult = useCallback((result: string): AnalysisResult => {
+    console.log('[Overshoot] Raw result to parse:', result);
     try {
       const jsonMatch = result.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
+        console.log('[Overshoot] Parsed result:', parsed);
         return {
           emergency: parsed.emergency ?? false,
           type: (parsed.type as EmergencyType) ?? 'normal',
@@ -122,8 +124,9 @@ export default function VideoFeed({
           timestamp: new Date(),
         };
       }
+      console.warn('[Overshoot] No JSON found in result');
     } catch (err) {
-      console.error('Failed to parse Overshoot result:', err);
+      console.error('[Overshoot] Failed to parse result:', err);
     }
     return {
       emergency: false,
@@ -134,7 +137,7 @@ export default function VideoFeed({
     };
   }, []);
 
-  const startOvershootAnalysis = useCallback(() => {
+  const startOvershootAnalysis = useCallback(async () => {
     // Validate API key before starting
     if (!process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY) {
       setError('Overshoot API key not configured');
@@ -154,8 +157,16 @@ export default function VideoFeed({
       apiKey: process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY,
       prompt: OVERSHOOT_PROMPT,
       source: { type: 'camera', cameraFacing: 'user' },
+      processing: {
+        clip_length_seconds: 1,
+        delay_seconds: 1,
+        fps: 30,
+        sampling_ratio: 0.1,
+      },
       onResult: (result: StreamInferenceResult) => {
+        console.log('[Overshoot] onResult received:', result);
         if (!result.ok) {
+          console.error('[Overshoot] Result not ok:', result.error);
           setError(`Analysis error: ${result.error}`);
           return;
         }
@@ -167,12 +178,23 @@ export default function VideoFeed({
         }
       },
       onError: (error: Error) => {
+        console.error('[Overshoot] onError:', error);
         setError(`Connection error: ${error.message}`);
         setIsAnalyzing(false);
         activeProviderRef.current = null;
       },
     });
-    overshootRef.current.start();
+
+    try {
+      console.log('[Overshoot] Starting RealtimeVision...');
+      await overshootRef.current.start();
+      console.log('[Overshoot] RealtimeVision started successfully');
+    } catch (err) {
+      console.error('[Overshoot] Failed to start:', err);
+      setError(`Failed to start Overshoot: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setIsAnalyzing(false);
+      activeProviderRef.current = null;
+    }
   }, [onEmergencyDetected, parseOvershootResult, setIsAnalyzing]);
 
   const stopOvershootAnalysis = useCallback(() => {
@@ -180,7 +202,7 @@ export default function VideoFeed({
     overshootRef.current = null;
   }, []);
 
-  const toggleAnalysis = () => {
+  const toggleAnalysis = async () => {
     if (isAnalyzing) {
       // Stop analysis
       if (provider === 'overshoot') {
@@ -196,14 +218,14 @@ export default function VideoFeed({
     } else {
       // Start analysis
       activeProviderRef.current = provider;
+      setIsAnalyzing(true);
       if (provider === 'overshoot') {
-        startOvershootAnalysis();
+        await startOvershootAnalysis();
       } else {
         // Gemini: Analyze every 2 seconds
         analyzeFrame();
         analysisIntervalRef.current = setInterval(analyzeFrame, 2000);
       }
-      setIsAnalyzing(true);
     }
   };
 
