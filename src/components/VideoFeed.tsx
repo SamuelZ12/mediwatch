@@ -2,7 +2,8 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { Camera, CameraOff, AlertTriangle, Activity } from 'lucide-react';
-import type { AnalysisResult } from '@/types';
+import { RealtimeVision, type StreamInferenceResult } from '@overshoot/sdk';
+import type { AnalysisResult, EmergencyType } from '@/types';
 
 interface VideoFeedProps {
   onEmergencyDetected: (result: AnalysisResult) => void;
@@ -10,6 +11,9 @@ interface VideoFeedProps {
   isAnalyzing: boolean;
   setIsAnalyzing: (analyzing: boolean) => void;
 }
+
+const OVERSHOOT_PROMPT = `Analyze for medical emergencies: fall, choking, seizure, unconscious, distress.
+Return JSON: {"emergency": boolean, "type": string, "confidence": 0-1, "description": "brief"}`;
 
 export default function VideoFeed({
   onEmergencyDetected,
@@ -19,9 +23,11 @@ export default function VideoFeed({
 }: VideoFeedProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overshootRef = useRef<RealtimeVision | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<AnalysisResult | null>(null);
+  const [provider, setProvider] = useState<'gemini' | 'overshoot'>('overshoot');
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const startCamera = async () => {
@@ -51,6 +57,10 @@ export default function VideoFeed({
     if (analysisIntervalRef.current) {
       clearInterval(analysisIntervalRef.current);
       analysisIntervalRef.current = null;
+    }
+    if (overshootRef.current) {
+      overshootRef.current.stop();
+      overshootRef.current = null;
     }
     setIsAnalyzing(false);
   };
@@ -97,17 +107,81 @@ export default function VideoFeed({
     }
   }, [captureFrame, location, onEmergencyDetected]);
 
+  const parseOvershootResult = useCallback((result: string): AnalysisResult => {
+    try {
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          emergency: parsed.emergency ?? false,
+          type: (parsed.type as EmergencyType) ?? 'normal',
+          confidence: parsed.confidence ?? 0,
+          description: parsed.description ?? 'Analysis complete',
+          timestamp: new Date(),
+        };
+      }
+    } catch (err) {
+      console.error('Failed to parse Overshoot result:', err);
+    }
+    return {
+      emergency: false,
+      type: 'normal',
+      confidence: 0,
+      description: 'Analysis complete',
+      timestamp: new Date(),
+    };
+  }, []);
+
+  const startOvershootAnalysis = useCallback(() => {
+    overshootRef.current = new RealtimeVision({
+      apiUrl: 'https://cluster1.overshoot.ai/api/v0.2',
+      apiKey: process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY || '',
+      prompt: OVERSHOOT_PROMPT,
+      source: { type: 'camera', cameraFacing: 'user' },
+      onResult: (result: StreamInferenceResult) => {
+        if (!result.ok) {
+          console.error('Overshoot analysis error:', result.error);
+          return;
+        }
+        const parsed = parseOvershootResult(result.result);
+        setLastResult(parsed);
+        if (parsed.emergency && parsed.confidence > 0.7) {
+          onEmergencyDetected(parsed);
+        }
+      },
+      onError: (error: Error) => {
+        console.error('Overshoot error:', error);
+      },
+    });
+    overshootRef.current.start();
+  }, [onEmergencyDetected, parseOvershootResult]);
+
+  const stopOvershootAnalysis = useCallback(() => {
+    overshootRef.current?.stop();
+    overshootRef.current = null;
+  }, []);
+
   const toggleAnalysis = () => {
     if (isAnalyzing) {
-      if (analysisIntervalRef.current) {
-        clearInterval(analysisIntervalRef.current);
-        analysisIntervalRef.current = null;
+      // Stop analysis
+      if (provider === 'overshoot') {
+        stopOvershootAnalysis();
+      } else {
+        if (analysisIntervalRef.current) {
+          clearInterval(analysisIntervalRef.current);
+          analysisIntervalRef.current = null;
+        }
       }
       setIsAnalyzing(false);
     } else {
-      // Analyze every 2 seconds
-      analyzeFrame();
-      analysisIntervalRef.current = setInterval(analyzeFrame, 2000);
+      // Start analysis
+      if (provider === 'overshoot') {
+        startOvershootAnalysis();
+      } else {
+        // Gemini: Analyze every 2 seconds
+        analyzeFrame();
+        analysisIntervalRef.current = setInterval(analyzeFrame, 2000);
+      }
       setIsAnalyzing(true);
     }
   };
@@ -166,13 +240,23 @@ export default function VideoFeed({
         </span>
       </div>
 
-      {/* Analysis status */}
-      {isAnalyzing && (
-        <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/50 px-3 py-1 rounded">
-          <Activity className="w-4 h-4 text-blue-400 animate-pulse" />
-          <span className="text-white text-sm">Monitoring</span>
-        </div>
-      )}
+      {/* Analysis status and provider selector */}
+      <div className="absolute top-4 right-4 flex items-center gap-2">
+        <select
+          value={provider}
+          onChange={(e) => setProvider(e.target.value as 'gemini' | 'overshoot')}
+          className="bg-gray-700 text-white rounded px-2 py-1 text-sm border border-gray-600 focus:outline-none focus:border-blue-500"
+        >
+          <option value="overshoot">Overshoot</option>
+          <option value="gemini">Gemini</option>
+        </select>
+        {isAnalyzing && (
+          <div className="flex items-center gap-2 bg-black/50 px-3 py-1 rounded">
+            <Activity className="w-4 h-4 text-blue-400 animate-pulse" />
+            <span className="text-white text-sm">Monitoring</span>
+          </div>
+        )}
+      </div>
 
       {/* Last result display */}
       {lastResult && (
