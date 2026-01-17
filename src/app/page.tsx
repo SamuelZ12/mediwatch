@@ -60,7 +60,7 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center space-x-6">
             <div className="text-right bg-white/50 px-4 py-2 rounded-2xl border border-[#E5DFD9]">
-              <p className="text-[10px] font-bold text-[#A85834] uppercase tracking-widest mb-0.5">Uptime Status</p>
+              <p className="text-xs font-bold text-[#A85834] uppercase tracking-widest mb-0.5">Uptime Status</p>
               <p className="text-xl font-mono font-bold text-[#423E3B]">{uptime}</p>
             </div>
             <button className="relative p-2 text-[#8E867E] hover:text-[#423E3B] transition-colors">

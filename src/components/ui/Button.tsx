@@ -9,12 +9,12 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles: Record<ButtonVariant, string> = {
-  primary: 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800',
-  secondary: 'bg-slate-600 text-white hover:bg-slate-700 active:bg-slate-800',
+  primary: 'bg-[#E78A62] text-white hover:bg-[#D47A52] active:bg-[#A85834]',
+  secondary: 'bg-[#F2EDE8] text-[#423E3B] hover:bg-[#E5DFD9] active:bg-[#C4BDB5]',
   success: 'bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800',
   warning: 'bg-amber-600 text-white hover:bg-amber-700 active:bg-amber-800',
   danger: 'bg-red-600 text-white hover:bg-red-700 active:bg-red-800',
-  ghost: 'bg-transparent text-slate-300 hover:bg-slate-700 active:bg-slate-600',
+  ghost: 'bg-transparent text-[#8E867E] hover:bg-[#F2EDE8] active:bg-[#E5DFD9]',
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(

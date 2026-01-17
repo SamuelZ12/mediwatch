@@ -13,14 +13,14 @@ const CameraCard: React.FC<CameraCardProps> = ({ room }) => {
         <div className="bg-[#FFFDFB] rounded-[2rem] p-4 shadow-sm border border-[#E5DFD9] hover:shadow-md transition-all duration-300 group">
             <div className="relative aspect-video rounded-2xl overflow-hidden bg-[#2D2A28] mb-4">
                 <div className="absolute top-3 left-3 flex items-center space-x-2 z-10">
-                    <span className="flex items-center space-x-1 bg-red-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                    <span className="flex items-center space-x-1 bg-red-500/90 text-white text-xs font-bold px-2 py-0.5 rounded-full uppercase">
                         <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
                         <span>Live</span>
                     </span>
                 </div>
 
                 <div className="absolute top-3 right-3 z-10">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${isCritical ? 'bg-red-100 text-red-600 animate-pulse' :
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full uppercase ${isCritical ? 'bg-red-100 text-red-600 animate-pulse' :
                             isWarning ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'
                         }`}>
                         {room.stats.status}
@@ -37,7 +37,7 @@ const CameraCard: React.FC<CameraCardProps> = ({ room }) => {
             <div className="flex justify-between items-start mb-3 px-1">
                 <div>
                     <h3 className="text-lg font-bold text-[#423E3B] leading-tight">{room.name}</h3>
-                    <p className="text-[10px] font-bold text-[#8E867E] tracking-wider uppercase">{room.roomCode}</p>
+                    <p className="text-xs font-bold text-[#8E867E] tracking-wider uppercase">{room.roomCode}</p>
                 </div>
                 <div className="flex space-x-1">
                     <button className="p-2 bg-[#F8F5F2] hover:bg-[#FFE7D9] rounded-xl text-[#8E867E] hover:text-[#E78A62] transition-colors">
@@ -48,25 +48,24 @@ const CameraCard: React.FC<CameraCardProps> = ({ room }) => {
 
             <div className="grid grid-cols-2 gap-2">
                 <div className="bg-[#F8F5F2] rounded-2xl p-3 flex items-center space-x-3 transition-colors hover:bg-white border border-transparent hover:border-[#E5DFD9]">
-                    <div className={`p-1.5 rounded-lg transition-all duration-300 ${isCritical ? 'bg-red-200 animate-[pulse_1s_infinite]' : 'bg-red-100'}`}>
-                        <svg className={`w-3.5 h-3.5 text-red-500 ${room.stats.heartRate > 100 ? 'animate-[bounce_0.6s_infinite]' : 'animate-pulse'}`} fill="currentColor" viewBox="0 0 24 24">
+                    <div className={`p-1.5 rounded-lg transition-all duration-300 ${isCritical ? 'bg-red-200' : 'bg-red-100'}`}>
+                        <svg className="w-3.5 h-3.5 text-red-500 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
                         </svg>
                     </div>
                     <div>
-                        <p className="text-[10px] text-[#8E867E] font-bold uppercase leading-none mb-1">BPM</p>
+                        <p className="text-xs text-[#8E867E] font-bold uppercase leading-none mb-1">BPM</p>
                         <p className="text-sm font-black text-[#423E3B]">{room.stats.heartRate}</p>
                     </div>
                 </div>
                 <div className="bg-[#F8F5F2] rounded-2xl p-3 flex items-center space-x-3 transition-colors hover:bg-white border border-transparent hover:border-[#E5DFD9]">
-                    <div className="p-1.5 bg-blue-100 rounded-lg overflow-hidden relative">
-                        <div className="absolute inset-x-0 bottom-0 h-1 bg-blue-500 animate-[pulse_2s_infinite]"></div>
-                        <svg className="w-3.5 h-3.5 text-blue-500 animate-[wiggle_3s_infinite]" fill="currentColor" viewBox="0 0 24 24">
+                    <div className="p-1.5 bg-blue-100 rounded-lg">
+                        <svg className="w-3.5 h-3.5 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M12 2c-4.418 0-8 3.582-8 8 0 5.25 8 12 8 12s8-6.75 8-12c0-4.418-3.582-8-8-8zm0 11c-1.657 0-3-1.343-3-3s1.343-3 3-3 3 1.343 3 3-1.343 3-3 3z" />
                         </svg>
                     </div>
                     <div>
-                        <p className="text-[10px] text-[#8E867E] font-bold uppercase leading-none mb-1">SPO2</p>
+                        <p className="text-xs text-[#8E867E] font-bold uppercase leading-none mb-1">SPO2</p>
                         <p className="text-sm font-black text-[#423E3B]">{room.stats.oxygen}%</p>
                     </div>
                 </div>

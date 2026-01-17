@@ -20,12 +20,12 @@ interface AlertHistoryProps {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  fall: 'bg-orange-500',
+  fall: 'bg-amber-500',
   choking: 'bg-red-600',
-  seizure: 'bg-purple-600',
-  unconscious: 'bg-red-500',
+  seizure: 'bg-red-600',
+  unconscious: 'bg-red-600',
   distress: 'bg-amber-500',
-  normal: 'bg-emerald-500',
+  normal: 'bg-emerald-600',
 };
 
 const TYPE_ICONS: Record<string, string> = {
@@ -62,7 +62,7 @@ export default function AlertHistory({
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-xs font-bold text-[#8E867E] uppercase tracking-widest">Alert History</h3>
-        <span className="bg-[#E78A62] text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+        <span className="bg-[#E78A62] text-white text-xs font-bold px-2 py-0.5 rounded-full">
           {alerts.filter(a => !a.acknowledged).length} NEW
         </span>
       </div>
@@ -93,7 +93,7 @@ export default function AlertHistory({
                       {alert.type}
                     </span>
                     {!alert.acknowledged && (
-                      <span className="px-2 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full animate-pulse">
+                      <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full animate-pulse">
                         NEW
                       </span>
                     )}
