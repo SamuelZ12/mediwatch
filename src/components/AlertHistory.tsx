@@ -24,8 +24,8 @@ const TYPE_COLORS: Record<string, string> = {
   choking: 'bg-red-600',
   seizure: 'bg-purple-600',
   unconscious: 'bg-red-500',
-  distress: 'bg-yellow-500',
-  normal: 'bg-green-500',
+  distress: 'bg-amber-500',
+  normal: 'bg-emerald-500',
 };
 
 const TYPE_ICONS: Record<string, string> = {
@@ -46,10 +46,12 @@ export default function AlertHistory({
 
   if (alerts.length === 0) {
     return (
-      <div className="bg-gray-800 rounded-xl p-6 text-center">
-        <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-        <h3 className="text-lg font-medium text-gray-200">No Alerts</h3>
-        <p className="text-gray-400 text-sm mt-1">
+      <div className="bg-[#FFFDFB] rounded-[2rem] p-6 text-center border border-[#E5DFD9] shadow-sm">
+        <div className="bg-emerald-100 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <CheckCircle className="w-8 h-8 text-emerald-600" />
+        </div>
+        <h3 className="text-lg font-bold text-[#423E3B]">No Alerts</h3>
+        <p className="text-[#8E867E] text-sm mt-1">
           All monitored areas are normal
         </p>
       </div>
@@ -58,22 +60,28 @@ export default function AlertHistory({
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xs font-bold text-[#8E867E] uppercase tracking-widest">Alert History</h3>
+        <span className="bg-[#E78A62] text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+          {alerts.filter(a => !a.acknowledged).length} NEW
+        </span>
+      </div>
       {alerts.map((alert) => (
         <div
           key={alert.id}
-          className={`rounded-xl overflow-hidden transition-all ${
-            alert.acknowledged ? 'bg-gray-800' : 'bg-gray-800 ring-2 ring-red-500'
+          className={`bg-[#FFFDFB] rounded-[1.5rem] overflow-hidden transition-all border shadow-sm ${
+            alert.acknowledged ? 'border-[#E5DFD9]' : 'border-red-300 ring-2 ring-red-100'
           }`}
         >
           {/* Header */}
           <div
-            className="p-4 cursor-pointer"
+            className="p-4 cursor-pointer hover:bg-[#F8F5F2] transition-colors"
             onClick={() => setExpandedId(expandedId === alert.id ? null : alert.id)}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div
-                  className={`w-10 h-10 rounded-full ${
+                  className={`w-10 h-10 rounded-xl ${
                     TYPE_COLORS[alert.type]
                   } flex items-center justify-center text-xl`}
                 >
@@ -81,29 +89,29 @@ export default function AlertHistory({
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-white uppercase">
+                    <span className="font-bold text-[#423E3B] uppercase text-sm">
                       {alert.type}
                     </span>
                     {!alert.acknowledged && (
-                      <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full animate-pulse">
+                      <span className="px-2 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full animate-pulse">
                         NEW
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <div className="flex items-center gap-1 text-xs text-[#8E867E]">
                     <MapPin className="w-3 h-3" />
                     {alert.location}
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-gray-400 text-sm">
+                <span className="text-[#8E867E] text-xs font-medium">
                   {Math.round(alert.confidence * 100)}%
                 </span>
                 {expandedId === alert.id ? (
-                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                  <ChevronUp className="w-5 h-5 text-[#8E867E]" />
                 ) : (
-                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                  <ChevronDown className="w-5 h-5 text-[#8E867E]" />
                 )}
               </div>
             </div>
@@ -111,9 +119,9 @@ export default function AlertHistory({
 
           {/* Expanded content */}
           {expandedId === alert.id && (
-            <div className="px-4 pb-4 border-t border-gray-700 pt-3">
-              <p className="text-gray-300 text-sm mb-3">{alert.description}</p>
-              <div className="flex items-center gap-2 text-xs text-gray-500 mb-4">
+            <div className="px-4 pb-4 border-t border-[#E5DFD9] pt-3">
+              <p className="text-[#423E3B] text-sm mb-3">{alert.description}</p>
+              <div className="flex items-center gap-2 text-xs text-[#8E867E] mb-4">
                 <Clock className="w-3 h-3" />
                 {format(new Date(alert.timestamp), 'PPpp')}
               </div>
@@ -123,7 +131,7 @@ export default function AlertHistory({
                     e.stopPropagation();
                     onPlayAudio(alert);
                   }}
-                  className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition"
+                  className="flex items-center gap-2 px-3 py-2 bg-[#F8F5F2] hover:bg-[#E5DFD9] text-[#423E3B] rounded-xl text-sm font-semibold transition-colors border border-[#E5DFD9]"
                 >
                   <Volume2 className="w-4 h-4" />
                   Play Alert
@@ -134,7 +142,7 @@ export default function AlertHistory({
                       e.stopPropagation();
                       onAcknowledge(alert.id);
                     }}
-                    className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm transition"
+                    className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-colors"
                   >
                     <CheckCircle className="w-4 h-4" />
                     Acknowledge

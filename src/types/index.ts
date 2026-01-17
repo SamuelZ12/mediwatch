@@ -30,3 +30,17 @@ export interface VoiceAlertConfig {
   language: 'en' | 'es' | 'zh';
   voiceId?: string;
 }
+
+export interface CameraRoomStats {
+  heartRate: number;
+  oxygen: number;
+  status: 'Normal' | 'Warning' | 'Critical';
+}
+
+export interface CameraRoom {
+  id: string;
+  name: string;
+  roomCode: string;
+  stats: CameraRoomStats;
+  isRecording: boolean;
+}
