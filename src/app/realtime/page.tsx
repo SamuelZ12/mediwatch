@@ -13,73 +13,77 @@ const RealTimePage: React.FC = () => {
     const startupAnnouncedRef = useRef(false);
     const audioQueueRef = useRef<HTMLAudioElement[]>([]);
 
-    // Play TTS audio from API
-    const playTTSAlert = useCallback(async (type: string, location: string) => {
-        try {
-            const response = await fetch('/api/tts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type, location, language: 'en' }),
-            });
-
+    // Play TTS audio from API (non-blocking)
+    const playTTSAlert = useCallback((type: string, location: string) => {
+        // Fire and forget - don't block the main thread
+        fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type, location, language: 'en' }),
+        })
+        .then(response => {
             if (!response.ok) {
                 console.error('TTS API error:', response.status);
-                return;
+                return null;
             }
-
-            const audioBlob = await response.blob();
+            return response.blob();
+        })
+        .then(audioBlob => {
+            if (!audioBlob) return;
+            
             const audioUrl = URL.createObjectURL(audioBlob);
             const audio = new Audio(audioUrl);
 
             // Clean up URL after playback
             audio.addEventListener('ended', () => {
                 URL.revokeObjectURL(audioUrl);
-                // Remove from queue
                 audioQueueRef.current = audioQueueRef.current.filter(a => a !== audio);
             });
 
             // Add to queue and play
             audioQueueRef.current.push(audio);
-            await audio.play();
-        } catch (error) {
+            audio.play().catch(err => console.error('Audio play error:', err));
+        })
+        .catch(error => {
             console.error('Failed to play TTS alert:', error);
-        }
+        });
     }, []);
 
-    // Play startup message
-    const playStartupMessage = useCallback(async () => {
+    // Play startup message (non-blocking)
+    const playStartupMessage = useCallback(() => {
         if (startupAnnouncedRef.current) return;
         startupAnnouncedRef.current = true;
 
-        try {
-            const response = await fetch('/api/tts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    type: 'normal', 
-                    location: 'Primary Monitor', 
-                    language: 'en',
-                    customText: 'MediWatch monitoring system activated. Real-time analysis is now running.'
-                }),
-            });
-
+        fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                type: 'normal', 
+                location: 'Primary Monitor', 
+                language: 'en',
+                customText: 'MediWatch monitoring system activated. Real-time analysis is now running.'
+            }),
+        })
+        .then(response => {
             if (!response.ok) {
-                // Fallback to direct API call if custom text not supported
-                // For now, we'll skip startup message if API doesn't support it
-                console.log('Startup message skipped (API may not support custom text)');
-                return;
+                console.log('Startup message skipped');
+                return null;
             }
-
-            const audioBlob = await response.blob();
+            return response.blob();
+        })
+        .then(audioBlob => {
+            if (!audioBlob) return;
+            
             const audioUrl = URL.createObjectURL(audioBlob);
             const audio = new Audio(audioUrl);
             audio.addEventListener('ended', () => {
                 URL.revokeObjectURL(audioUrl);
             });
-            await audio.play();
-        } catch (error) {
+            audio.play().catch(err => console.error('Startup audio error:', err));
+        })
+        .catch(error => {
             console.error('Failed to play startup message:', error);
-        }
+        });
     }, []);
 
     const handleEmergencyDetected = useCallback((result: AnalysisResult) => {
@@ -92,13 +96,26 @@ const RealTimePage: React.FC = () => {
             location: 'Primary Monitor',
             acknowledged: false,
         };
-        setAlerts(prev => [newAlert, ...prev]);
+        
+        // Only add alert if it's not a duplicate of the most recent one
+        setAlerts(prev => {
+            // Check if this is a duplicate of the most recent alert
+            if (prev.length > 0) {
+                const lastAlert = prev[0];
+                const timeDiff = new Date().getTime() - new Date(lastAlert.timestamp).getTime();
+                // Skip if same type within 2 seconds
+                if (lastAlert.type === result.type && timeDiff < 2000) {
+                    return prev;
+                }
+            }
+            return [newAlert, ...prev];
+        });
 
-        // Auto-announce emergency with debouncing (prevent spam)
+        // Auto-announce emergency with faster debouncing
         if (result.emergency && result.type !== 'normal') {
             const now = Date.now();
             const lastAnnounced = lastAnnouncedRef.current;
-            const DEBOUNCE_MS = 5000; // 5 seconds between same-type announcements
+            const DEBOUNCE_MS = 3000; // 3 seconds between same-type TTS announcements
 
             if (
                 !lastAnnounced ||
