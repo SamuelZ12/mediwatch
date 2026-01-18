@@ -96,14 +96,6 @@ const App: React.FC = () => {
           ))}
         </div>
 
-        <footer className="mt-16 pt-8 border-t border-[#E5DFD9] flex flex-col md:flex-row justify-between items-center text-[#8E867E] text-xs font-semibold uppercase tracking-widest">
-          <p>© 2026 MediWatch OS v2.1.4 - HIPAA Compliant</p>
-          <div className="flex space-x-6 mt-4 md:mt-0">
-            <a href="#" className="hover:text-[#E78A62] transition-colors">Support</a>
-            <a href="#" className="hover:text-[#E78A62] transition-colors">Security</a>
-            <a href="#" className="hover:text-[#E78A62] transition-colors">API</a>
-          </div>
-        </footer>
       </main>
     </div>
   );

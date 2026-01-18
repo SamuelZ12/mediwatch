@@ -86,6 +86,36 @@ const RealTimePage: React.FC = () => {
         });
     }, []);
 
+    // Send email notification for emergencies
+    const sendEmailNotification = useCallback((result: AnalysisResult, location: string) => {
+        // Handle timestamp - could be Date object or string
+        const timestamp = result.timestamp instanceof Date 
+            ? result.timestamp.toISOString() 
+            : String(result.timestamp);
+            
+        fetch('/api/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: result.type,
+                description: result.description,
+                confidence: result.confidence,
+                location,
+                timestamp,
+            }),
+        })
+        .then(response => {
+            if (response.ok) {
+                console.log('[Email] Emergency notification sent successfully');
+            } else {
+                console.error('[Email] Failed to send notification:', response.status);
+            }
+        })
+        .catch(error => {
+            console.error('[Email] Error sending notification:', error);
+        });
+    }, []);
+
     const handleEmergencyDetected = useCallback((result: AnalysisResult) => {
         const newAlert: Alert = {
             id: `alert-${Date.now()}`,
@@ -97,36 +127,32 @@ const RealTimePage: React.FC = () => {
             acknowledged: false,
         };
         
-        // Only add alert if it's not a duplicate of the most recent one
-        setAlerts(prev => {
-            // Check if this is a duplicate of the most recent alert
-            if (prev.length > 0) {
-                const lastAlert = prev[0];
-                const timeDiff = new Date().getTime() - new Date(lastAlert.timestamp).getTime();
-                // Skip if same type within 2 seconds
-                if (lastAlert.type === result.type && timeDiff < 2000) {
-                    return prev;
-                }
-            }
-            return [newAlert, ...prev];
-        });
+        // Add alert to history (deduplication already handled in VideoFeed)
+        setAlerts(prev => [newAlert, ...prev]);
 
-        // Auto-announce emergency with faster debouncing
+        // Auto-announce emergency with 5-second debouncing
         if (result.emergency && result.type !== 'normal') {
             const now = Date.now();
             const lastAnnounced = lastAnnouncedRef.current;
-            const DEBOUNCE_MS = 3000; // 3 seconds between same-type TTS announcements
+            const DEBOUNCE_MS = 5000; // 5 seconds between TTS announcements
 
+            // Only announce if enough time has passed since last announcement
             if (
                 !lastAnnounced ||
-                lastAnnounced.type !== result.type ||
                 now - lastAnnounced.timestamp > DEBOUNCE_MS
             ) {
                 lastAnnouncedRef.current = { type: result.type, timestamp: now };
+                console.log(`[TTS] Playing alert for ${result.type}`);
                 playTTSAlert(result.type, 'Primary Monitor');
+                
+                // Send email notification for emergencies
+                sendEmailNotification(result, 'Primary Monitor');
+            } else {
+                const remainingTime = Math.ceil((DEBOUNCE_MS - (now - lastAnnounced.timestamp)) / 1000);
+                console.log(`[TTS] Suppressed (${remainingTime}s until next announcement)`);
             }
         }
-    }, [playTTSAlert]);
+    }, [playTTSAlert, sendEmailNotification]);
 
     const handleAcknowledge = useCallback((alertId: string) => {
         setAlerts(prev =>
@@ -159,9 +185,6 @@ const RealTimePage: React.FC = () => {
                 <header className="flex flex-col md:flex-row md:items-start justify-between mb-10 space-y-4 md:space-y-0">
                     <div>
                         <h1 className="text-4xl font-black text-[#423E3B] tracking-tight mb-2">Real Time Monitoring</h1>
-                        <p className="text-[#8E867E] font-medium max-w-md">
-                            AI-powered video analysis using Google Gemini. All streams are encrypted and HIPAA compliant.
-                        </p>
                     </div>
                     <div className="flex items-center space-x-4">
                         <div className={`flex items-center space-x-2 px-4 py-2 rounded-2xl border ${
@@ -186,6 +209,7 @@ const RealTimePage: React.FC = () => {
                             setIsAnalyzing={setIsAnalyzing}
                             onEmergencyDetected={handleEmergencyDetected}
                             autoStart={true}
+                            enableFaceMesh={true}
                         />
                     </div>
 
@@ -199,14 +223,6 @@ const RealTimePage: React.FC = () => {
                     </div>
                 </div>
 
-                <footer className="mt-16 pt-8 border-t border-[#E5DFD9] flex flex-col md:flex-row justify-between items-center text-[#8E867E] text-xs font-semibold uppercase tracking-widest">
-                    <p>© 2026 MediWatch OS v2.1.4 - HIPAA Compliant</p>
-                    <div className="flex space-x-6 mt-4 md:mt-0">
-                        <a href="#" className="hover:text-[#E78A62] transition-colors">Support</a>
-                        <a href="#" className="hover:text-[#E78A62] transition-colors">Security</a>
-                        <a href="#" className="hover:text-[#E78A62] transition-colors">API</a>
-                    </div>
-                </footer>
             </main>
         </div>
     );
