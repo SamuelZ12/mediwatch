@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  // Disable Next.js dev indicator
+  devIndicators: false,
   // Server-side external packages (won't be bundled on server)
   serverExternalPackages: [
     '@mediapipe/face_mesh',

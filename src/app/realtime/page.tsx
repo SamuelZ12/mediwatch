@@ -117,18 +117,31 @@ const RealTimePage: React.FC = () => {
     }, []);
 
     const handleEmergencyDetected = useCallback((result: AnalysisResult) => {
-        const newAlert: Alert = {
-            id: `alert-${Date.now()}`,
-            type: result.type,
-            confidence: result.confidence,
-            description: result.description,
-            timestamp: result.timestamp,
-            location: 'Primary Monitor',
-            acknowledged: false,
-        };
-        
-        // Add alert to history (deduplication already handled in VideoFeed)
-        setAlerts(prev => [newAlert, ...prev]);
+        // Check if this alert type already exists and is not acknowledged
+        setAlerts(prev => {
+            const existingAlert = prev.find(
+                alert => alert.type === result.type && !alert.acknowledged
+            );
+            
+            // If same alert type already exists (unacknowledged), don't add duplicate
+            if (existingAlert) {
+                console.log(`[Alert] Duplicate ${result.type} alert suppressed - already exists`);
+                return prev;
+            }
+            
+            const newAlert: Alert = {
+                id: `alert-${Date.now()}`,
+                type: result.type,
+                confidence: result.confidence,
+                description: result.description,
+                timestamp: result.timestamp,
+                location: 'Primary Monitor',
+                acknowledged: false,
+            };
+            
+            console.log(`[Alert] New ${result.type} alert added`);
+            return [newAlert, ...prev];
+        });
 
         // Auto-announce emergency with 5-second debouncing
         if (result.emergency && result.type !== 'normal') {
