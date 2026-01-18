@@ -4,6 +4,9 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { CameraOff, AlertTriangle, Activity } from 'lucide-react';
 import { Badge } from '@/components/ui';
 import type { AnalysisResult } from '@/types';
+import * as tf from '@tensorflow/tfjs-core';
+import '@tensorflow/tfjs-backend-webgl';
+import * as faceLandmarksDetection from '@tensorflow-models/face-landmarks-detection';
 
 // Faster analysis interval for quicker detection (500ms = 2 frames/sec)
 const ANALYSIS_INTERVAL = 500;
@@ -21,47 +24,39 @@ interface EmergencyTracker {
   cooldownStartTime: number;
 }
 
-// MediaPipe FaceMesh types
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type FaceMeshType = any;
-
-let faceMesh: FaceMeshType | null = null;
-let faceMeshInitializing = false;
+// TensorFlow.js Face Landmarks Detection
+let tfjsDetector: faceLandmarksDetection.FaceLandmarksDetector | null = null;
+let tfjsInitializing = false;
 let lastFaceResults: { landmarks: Array<{x: number, y: number, z: number}> } | null = null;
 
-async function initMediaPipeFaceMesh(
-  onResults: (results: { multiFaceLandmarks?: Array<Array<{x: number, y: number, z: number}>> }) => void
-): Promise<FaceMeshType | null> {
-  if (faceMesh) return faceMesh;
-  if (faceMeshInitializing) return null;
-  
-  faceMeshInitializing = true;
-  console.log('[FaceMesh] Initializing MediaPipe...');
-  
+async function initTfjsFaceMesh(): Promise<faceLandmarksDetection.FaceLandmarksDetector | null> {
+  if (tfjsDetector) return tfjsDetector;
+  if (tfjsInitializing) return null;
+
+  tfjsInitializing = true;
+  console.log('[FaceMesh] Initializing TensorFlow.js...');
+
   try {
-    const FaceMeshModule = await import('@mediapipe/face_mesh');
-    const FaceMesh = FaceMeshModule.FaceMesh;
-    
-    faceMesh = new FaceMesh({
-      locateFile: (file: string) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
-      },
-    });
-    
-    faceMesh.setOptions({
-      maxNumFaces: 1,
-      refineLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
-    
-    faceMesh.onResults(onResults);
-    
-    console.log('[FaceMesh] MediaPipe ready!');
-    return faceMesh;
+    // Set up WebGL backend
+    await tf.setBackend('webgl');
+    await tf.ready();
+    console.log('[FaceMesh] TensorFlow.js backend ready:', tf.getBackend());
+
+    // Create face landmarks detector with tfjs runtime
+    tfjsDetector = await faceLandmarksDetection.createDetector(
+      faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
+      {
+        runtime: 'tfjs',
+        maxFaces: 1,
+        refineLandmarks: true,
+      }
+    );
+
+    console.log('[FaceMesh] TensorFlow.js detector ready!');
+    return tfjsDetector;
   } catch (err) {
     console.error('[FaceMesh] Failed to initialize:', err);
-    faceMeshInitializing = false;
+    tfjsInitializing = false;
     return null;
   }
 }
@@ -89,35 +84,45 @@ const FACEMESH_TESSELATION = [
   [10, 108], [108, 151], [151, 10], [6, 197], [197, 195], [195, 6], [48, 64], [64, 235], [235, 48],
 ];
 
-// Draw face mesh using MediaPipe landmarks
+// Draw face mesh using TensorFlow.js landmarks (pixel coordinates)
 function drawFaceMeshOnCanvas(
   ctx: CanvasRenderingContext2D,
   landmarks: Array<{x: number, y: number, z: number}>,
   canvasWidth: number,
-  canvasHeight: number
+  canvasHeight: number,
+  videoWidth: number,
+  videoHeight: number
 ): void {
   if (!landmarks || landmarks.length === 0) return;
-  
+
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-  
+
+  // Scale factor from video coordinates to canvas coordinates
+  const scaleX = canvasWidth / videoWidth;
+  const scaleY = canvasHeight / videoHeight;
+
+  // Helper to convert video pixel coords to canvas coords
+  const toCanvasX = (x: number) => x * scaleX;
+  const toCanvasY = (y: number) => y * scaleY;
+
   // Draw tesselation (mesh lines)
   ctx.strokeStyle = 'rgba(0, 255, 200, 0.3)';
   ctx.lineWidth = 0.5;
-  
+
   FACEMESH_TESSELATION.forEach(([start, end]) => {
     if (landmarks[start] && landmarks[end]) {
-      const x1 = landmarks[start].x * canvasWidth;
-      const y1 = landmarks[start].y * canvasHeight;
-      const x2 = landmarks[end].x * canvasWidth;
-      const y2 = landmarks[end].y * canvasHeight;
-      
+      const x1 = toCanvasX(landmarks[start].x);
+      const y1 = toCanvasY(landmarks[start].y);
+      const x2 = toCanvasX(landmarks[end].x);
+      const y2 = toCanvasY(landmarks[end].y);
+
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.stroke();
     }
   });
-  
+
   // Draw face contour
   const faceContour = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109, 10];
   ctx.strokeStyle = 'rgba(0, 255, 150, 0.8)';
@@ -125,14 +130,14 @@ function drawFaceMeshOnCanvas(
   ctx.beginPath();
   faceContour.forEach((idx, i) => {
     if (landmarks[idx]) {
-      const x = landmarks[idx].x * canvasWidth;
-      const y = landmarks[idx].y * canvasHeight;
+      const x = toCanvasX(landmarks[idx].x);
+      const y = toCanvasY(landmarks[idx].y);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
   });
   ctx.stroke();
-  
+
   // Draw left eye
   const leftEye = [33, 160, 158, 133, 153, 144, 163, 7, 33];
   ctx.strokeStyle = 'rgba(0, 200, 255, 0.9)';
@@ -140,27 +145,27 @@ function drawFaceMeshOnCanvas(
   ctx.beginPath();
   leftEye.forEach((idx, i) => {
     if (landmarks[idx]) {
-      const x = landmarks[idx].x * canvasWidth;
-      const y = landmarks[idx].y * canvasHeight;
+      const x = toCanvasX(landmarks[idx].x);
+      const y = toCanvasY(landmarks[idx].y);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
   });
   ctx.stroke();
-  
+
   // Draw right eye
   const rightEye = [263, 387, 385, 362, 380, 373, 390, 249, 263];
   ctx.beginPath();
   rightEye.forEach((idx, i) => {
     if (landmarks[idx]) {
-      const x = landmarks[idx].x * canvasWidth;
-      const y = landmarks[idx].y * canvasHeight;
+      const x = toCanvasX(landmarks[idx].x);
+      const y = toCanvasY(landmarks[idx].y);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
   });
   ctx.stroke();
-  
+
   // Draw lips
   const lips = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 61];
   ctx.strokeStyle = 'rgba(255, 100, 150, 0.9)';
@@ -168,21 +173,21 @@ function drawFaceMeshOnCanvas(
   ctx.beginPath();
   lips.forEach((idx, i) => {
     if (landmarks[idx]) {
-      const x = landmarks[idx].x * canvasWidth;
-      const y = landmarks[idx].y * canvasHeight;
+      const x = toCanvasX(landmarks[idx].x);
+      const y = toCanvasY(landmarks[idx].y);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
   });
   ctx.stroke();
-  
+
   // Draw key landmark points
   ctx.fillStyle = 'rgba(0, 255, 200, 0.9)';
   const keyPoints = [1, 4, 5, 6, 10, 33, 133, 263, 362, 61, 291, 199]; // nose, eyes, mouth centers
   keyPoints.forEach(idx => {
     if (landmarks[idx]) {
-      const x = landmarks[idx].x * canvasWidth;
-      const y = landmarks[idx].y * canvasHeight;
+      const x = toCanvasX(landmarks[idx].x);
+      const y = toCanvasY(landmarks[idx].y);
       ctx.beginPath();
       ctx.arc(x, y, 3, 0, Math.PI * 2);
       ctx.fill();
@@ -390,42 +395,32 @@ export default function VideoFeed({
     return () => stopCamera();
   }, [stopCamera]);
 
-  // Initialize MediaPipe face mesh
+  // Initialize TensorFlow.js face mesh detector
   useEffect(() => {
     if (!enableFaceMesh) return;
-    
-    const handleResults = (results: { multiFaceLandmarks?: Array<Array<{x: number, y: number, z: number}>> }) => {
-      if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-        lastFaceResults = { landmarks: results.multiFaceLandmarks[0] };
-        setFaceDetected(true);
-      } else {
-        lastFaceResults = null;
-        setFaceDetected(false);
-      }
-    };
-    
-    initMediaPipeFaceMesh(handleResults).then((fm) => {
-      if (fm) setFaceMeshReady(true);
+
+    initTfjsFaceMesh().then((detector) => {
+      if (detector) setFaceMeshReady(true);
     });
   }, [enableFaceMesh]);
 
   // Face mesh detection and drawing loop
   useEffect(() => {
-    if (!enableFaceMesh || !faceMeshReady || !isStreaming || !faceMesh) {
+    if (!enableFaceMesh || !faceMeshReady || !isStreaming || !tfjsDetector) {
       setFaceDetected(false);
       return;
     }
-    
+
     const video = videoRef.current;
     const faceMeshCanvas = faceMeshCanvasRef.current;
     if (!video || !faceMeshCanvas) return;
-    
+
     let isRunning = true;
     let isProcessing = false;
-    
+
     const runFaceMeshLoop = async () => {
       if (!isRunning) return;
-      
+
       // Skip if already processing
       if (isProcessing) {
         if (isRunning) {
@@ -433,9 +428,9 @@ export default function VideoFeed({
         }
         return;
       }
-      
+
       isProcessing = true;
-      
+
       const ctx = faceMeshCanvas.getContext('2d');
       if (ctx && video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2) {
         const rect = video.getBoundingClientRect();
@@ -443,31 +438,47 @@ export default function VideoFeed({
           faceMeshCanvas.width = rect.width;
           faceMeshCanvas.height = rect.height;
         }
-        
+
         try {
-          // Send frame to MediaPipe for processing
-          await faceMesh.send({ image: video });
-          
-          // Draw the results if we have them
-          if (lastFaceResults && lastFaceResults.landmarks) {
-            drawFaceMeshOnCanvas(ctx, lastFaceResults.landmarks, faceMeshCanvas.width, faceMeshCanvas.height);
+          // Use TensorFlow.js promise-based API
+          const faces = await tfjsDetector.estimateFaces(video);
+
+          if (faces.length > 0 && faces[0].keypoints) {
+            // Convert keypoints to landmarks format {x, y, z}
+            const landmarks = faces[0].keypoints.map((kp) => ({
+              x: kp.x,
+              y: kp.y,
+              z: kp.z ?? 0,
+            }));
+            lastFaceResults = { landmarks };
+            setFaceDetected(true);
+            drawFaceMeshOnCanvas(
+              ctx,
+              landmarks,
+              faceMeshCanvas.width,
+              faceMeshCanvas.height,
+              video.videoWidth,
+              video.videoHeight
+            );
           } else {
+            lastFaceResults = null;
+            setFaceDetected(false);
             ctx.clearRect(0, 0, faceMeshCanvas.width, faceMeshCanvas.height);
           }
         } catch (err) {
           console.error('[FaceMesh] Processing error:', err);
         }
       }
-      
+
       isProcessing = false;
-      
+
       if (isRunning) {
         faceMeshAnimationRef.current = requestAnimationFrame(runFaceMeshLoop);
       }
     };
-    
+
     runFaceMeshLoop();
-    
+
     return () => {
       isRunning = false;
       if (faceMeshAnimationRef.current) {

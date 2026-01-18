@@ -5,16 +5,26 @@ set -e
 
 echo "🔧 Setting up MediWatch Python Service..."
 
-# Check if Python 3.12 is installed
-if ! command -v python3.12 &> /dev/null; then
-    echo "Python 3.12 not found. Installing via Homebrew..."
-    brew install python@3.12
+# Find available Python 3.x (prefer 3.12, fall back to others)
+PYTHON_CMD=""
+for py in python3.12 python3.11 python3.10 python3; do
+    if command -v $py &> /dev/null; then
+        PYTHON_CMD=$py
+        break
+    fi
+done
+
+if [ -z "$PYTHON_CMD" ]; then
+    echo "❌ Python 3 not found. Please install Python 3.10 or later."
+    exit 1
 fi
+
+echo "✅ Using Python: $PYTHON_CMD ($($PYTHON_CMD --version))"
 
 # Create virtual environment if it doesn't exist
 if [ ! -d "venv" ]; then
-    echo "📦 Creating virtual environment with Python 3.12..."
-    /opt/homebrew/bin/python3.12 -m venv venv
+    echo "📦 Creating virtual environment..."
+    $PYTHON_CMD -m venv venv
 fi
 
 # Activate virtual environment
