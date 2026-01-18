@@ -187,4 +187,4 @@ MIT
 
 ---
 
-Built for NexHacks 2025
+Built for NexHacks 2026
