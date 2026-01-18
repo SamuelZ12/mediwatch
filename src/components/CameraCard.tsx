@@ -1,13 +1,16 @@
 import React from 'react';
 import { CameraRoom } from '../types';
+import RiskBadge from './ui/RiskBadge';
 
 interface CameraCardProps {
     room: CameraRoom;
+    riskScore?: number;
 }
 
-const CameraCard: React.FC<CameraCardProps> = ({ room }) => {
+const CameraCard: React.FC<CameraCardProps> = ({ room, riskScore }) => {
     const isCritical = room.stats.status === 'Critical';
     const isWarning = room.stats.status === 'Warning';
+    const displayRiskScore = riskScore ?? room.riskScore;
 
     return (
         <div className="bg-[#FFFDFB] rounded-[2rem] p-4 shadow-sm border border-[#E5DFD9] hover:shadow-md transition-all duration-300 group">
@@ -17,6 +20,9 @@ const CameraCard: React.FC<CameraCardProps> = ({ room }) => {
                         <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
                         <span>Live</span>
                     </span>
+                    {displayRiskScore !== undefined && (
+                        <RiskBadge score={displayRiskScore} size="sm" />
+                    )}
                 </div>
 
                 <div className="absolute top-3 right-3 z-10">
