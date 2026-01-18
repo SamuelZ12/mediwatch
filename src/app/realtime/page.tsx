@@ -143,7 +143,7 @@ const RealTimePage: React.FC = () => {
                     <div>
                         <h1 className="text-4xl font-black text-[#423E3B] tracking-tight mb-2">Real Time Monitoring</h1>
                         <p className="text-[#8E867E] font-medium max-w-md">
-                            AI-powered video analysis using Gemini or Overshoot. All streams are encrypted and HIPAA compliant.
+                            AI-powered video analysis using Google Gemini. All streams are encrypted and HIPAA compliant.
                         </p>
                     </div>
                     <div className="flex items-center space-x-4">

@@ -1,21 +1,22 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { CameraOff, AlertTriangle } from 'lucide-react';
-import type { AnalysisResult, BoundingBox } from '@/types';
+import { Camera, CameraOff, AlertTriangle, Activity } from 'lucide-react';
+import { RealtimeVision, type StreamInferenceResult } from '@overshoot/sdk';
+import { Button, Badge } from '@/components/ui';
+import type { AnalysisResult, EmergencyType } from '@/types';
 
 interface VideoFeedProps {
   onEmergencyDetected: (result: AnalysisResult) => void;
   location: string;
   isAnalyzing: boolean;
   setIsAnalyzing: (analyzing: boolean) => void;
-  autoStart?: boolean;
 }
 
-// Fast analysis - 200ms interval for responsive detection
-const ANALYSIS_INTERVAL = 200;
-// Cooldown after emergency detection (5 seconds)
-const EMERGENCY_COOLDOWN = 5000;
+const OVERSHOOT_PROMPT = `Analyze for medical emergencies: fall, choking, seizure, unconscious, distress.
+Return JSON: {"emergency": boolean, "type": string, "confidence": 0-1, "description": "brief"}`;
+const OVERSHOOT_API_URL =
+  process.env.NEXT_PUBLIC_OVERSHOOT_API_URL ?? 'https://cluster1.overshoot.ai/api/v0.2';
 
 export default function VideoFeed({
   onEmergencyDetected,
@@ -26,11 +27,12 @@ export default function VideoFeed({
 }: VideoFeedProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
+  const overshootRef = useRef<RealtimeVision | null>(null);
+  const activeProviderRef = useRef<'gemini' | 'overshoot' | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<AnalysisResult | null>(null);
-  const [isPaused, setIsPaused] = useState(false);
+  const [provider, setProvider] = useState<'gemini' | 'overshoot'>('gemini');
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const autoStartInitiatedRef = useRef(false);
   const cooldownTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -71,11 +73,10 @@ export default function VideoFeed({
       clearInterval(analysisIntervalRef.current);
       analysisIntervalRef.current = null;
     }
-    if (cooldownTimeoutRef.current) {
-      clearTimeout(cooldownTimeoutRef.current);
-      cooldownTimeoutRef.current = null;
+    if (overshootRef.current) {
+      overshootRef.current.stop();
+      overshootRef.current = null;
     }
-    setIsPaused(false);
     setIsAnalyzing(false);
   }, [setIsAnalyzing]);
 
@@ -116,24 +117,135 @@ export default function VideoFeed({
 
       if (result.emergency && result.confidence > 0.7) {
         onEmergencyDetected(result);
-        
-        // Start 5 second cooldown - pause analysis
-        setIsPaused(true);
-        
-        // Clear any existing cooldown timer
-        if (cooldownTimeoutRef.current) {
-          clearTimeout(cooldownTimeoutRef.current);
-        }
-        
-        // Resume analysis after cooldown
-        cooldownTimeoutRef.current = setTimeout(() => {
-          setIsPaused(false);
-        }, EMERGENCY_COOLDOWN);
       }
     } catch (err) {
-      console.error('Analysis error:', err);
+      console.error('[Gemini] Analysis error:', err);
+      setError(`Analysis error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [captureFrame, location, onEmergencyDetected, isPaused]);
+  }, [captureFrame, location, onEmergencyDetected]);
+
+  const parseOvershootResult = useCallback((result: string): AnalysisResult => {
+    console.log('[Overshoot] Raw result to parse:', result);
+    try {
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        console.log('[Overshoot] Parsed result:', parsed);
+        return {
+          emergency: parsed.emergency ?? false,
+          type: (parsed.type as EmergencyType) ?? 'normal',
+          confidence: parsed.confidence ?? 0,
+          description: parsed.description ?? 'Analysis complete',
+          timestamp: new Date(),
+        };
+      }
+      console.warn('[Overshoot] No JSON found in result');
+    } catch (err) {
+      console.error('[Overshoot] Failed to parse result:', err);
+    }
+    return {
+      emergency: false,
+      type: 'normal',
+      confidence: 0,
+      description: 'Analysis complete',
+      timestamp: new Date(),
+    };
+  }, []);
+
+  const startOvershootAnalysis = useCallback(async () => {
+    // Validate API key before starting
+    const overshootKey = process.env.NEXT_PUBLIC_OVERSHOOT_API_KEY;
+    if (!overshootKey) {
+      setError('Overshoot API key not configured');
+      return;
+    }
+
+    // Stop manual camera - Overshoot SDK manages its own
+    if (videoRef.current?.srcObject) {
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      tracks.forEach((track) => track.stop());
+      videoRef.current.srcObject = null;
+    }
+
+    overshootRef.current = new RealtimeVision({
+      apiUrl: OVERSHOOT_API_URL,
+      apiKey: overshootKey,
+      prompt: OVERSHOOT_PROMPT,
+      source: { type: 'camera', cameraFacing: 'user' },
+      backend: 'overshoot',
+      debug: true,
+      outputSchema: {
+        type: 'object',
+        properties: {
+          emergency: { type: 'boolean' },
+          type: { type: 'string', enum: ['fall', 'choking', 'seizure', 'unconscious', 'distress', 'normal'] },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+          description: { type: 'string' },
+        },
+        required: ['emergency', 'type', 'confidence', 'description'],
+      },
+      processing: {
+        clip_length_seconds: 1,
+        delay_seconds: 1,
+        fps: 30,
+        sampling_ratio: 0.1,
+      },
+      onResult: (result: StreamInferenceResult) => {
+        console.log('[Overshoot] onResult received:', result);
+        if (!result.ok) {
+          console.error('[Overshoot] Result not ok:', result.error);
+          setError(`Analysis error: ${result.error}`);
+          return;
+        }
+        setError(null);
+        const parsed = parseOvershootResult(result.result);
+        setLastResult(parsed);
+        if (parsed.emergency && parsed.confidence > 0.7) {
+          onEmergencyDetected(parsed);
+        }
+      },
+      onError: (error: Error) => {
+        console.error('[Overshoot] onError:', error);
+        setError(`Connection error: ${error.message}`);
+        setIsAnalyzing(false);
+        setIsStreaming(false);
+        activeProviderRef.current = null;
+      },
+    });
+
+    try {
+      console.log('[Overshoot] Starting RealtimeVision...');
+      await overshootRef.current.start();
+      console.log('[Overshoot] RealtimeVision started successfully');
+
+      const mediaStream = overshootRef.current.getMediaStream();
+      if (mediaStream && videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+        setIsStreaming(true);
+        console.log('[Overshoot] Media stream connected to video element');
+      } else {
+        console.warn('[Overshoot] Could not get media stream for preview');
+      }
+    } catch (err) {
+      console.error('[Overshoot] Failed to start:', err);
+      setError(`Failed to start Overshoot: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setIsAnalyzing(false);
+      setIsStreaming(false);
+      activeProviderRef.current = null;
+    }
+  }, [onEmergencyDetected, parseOvershootResult, setIsAnalyzing]);
+
+  const stopOvershootAnalysis = useCallback(() => {
+    if (overshootRef.current) {
+      overshootRef.current.stop();
+      overshootRef.current = null;
+    }
+    if (videoRef.current?.srcObject) {
+      videoRef.current.srcObject = null;
+    }
+    setIsStreaming(false);
+    setIsVideoReady(false);
+  }, []);
 
   const startAnalysis = useCallback(async () => {
     if (!isStreaming) {
@@ -152,24 +264,58 @@ export default function VideoFeed({
       });
     }
 
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Wait a moment for video to stabilize
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    console.log('[Gemini] Starting analysis interval...');
+    // Analyze immediately, then every 2 seconds
     analyzeFrame();
     analysisIntervalRef.current = setInterval(analyzeFrame, ANALYSIS_INTERVAL);
   }, [isStreaming, startCamera, analyzeFrame, setIsAnalyzing]);
 
-  // Auto-start on mount
-  useEffect(() => {
-    if (autoStart && !autoStartInitiatedRef.current && !isStreaming && !isAnalyzing) {
-      autoStartInitiatedRef.current = true;
-      const initialize = async () => {
-        setError(null);
-        setIsAnalyzing(true);
-        await startAnalysis();
-      };
-      initialize();
+  const toggleAnalysis = async () => {
+    if (isAnalyzing) {
+      // Stop analysis
+      if (activeProviderRef.current === 'overshoot') {
+        stopOvershootAnalysis();
+      } else {
+        if (analysisIntervalRef.current) {
+          clearInterval(analysisIntervalRef.current);
+          analysisIntervalRef.current = null;
+        }
+      }
+      setIsAnalyzing(false);
+      activeProviderRef.current = null;
+    } else {
+      // Start analysis
+      setError(null);
+      activeProviderRef.current = provider;
+      setIsAnalyzing(true);
+      
+      if (provider === 'overshoot') {
+        await startOvershootAnalysis();
+      } else {
+        await startGeminiAnalysis();
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStart]);
+  };
+
+  // Handle provider switch while analyzing
+  useEffect(() => {
+    if (isAnalyzing && activeProviderRef.current && activeProviderRef.current !== provider) {
+      if (activeProviderRef.current === 'overshoot') {
+        stopOvershootAnalysis();
+      } else {
+        if (analysisIntervalRef.current) {
+          clearInterval(analysisIntervalRef.current);
+          analysisIntervalRef.current = null;
+        }
+      }
+      setIsAnalyzing(false);
+      setLastResult(null);
+      activeProviderRef.current = null;
+    }
+  }, [provider, isAnalyzing, stopOvershootAnalysis, setIsAnalyzing]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -332,10 +478,105 @@ export default function VideoFeed({
             </div>
           </div>
         )}
+
+        {/* Status indicators */}
+        <div className="absolute top-3 left-3 flex items-center gap-2">
+          {isStreaming && (
+            <span className="flex items-center space-x-1 bg-red-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+              <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+              <span>Live</span>
+            </span>
+          )}
+        </div>
+
+        {/* Provider selector and status */}
+        <div className="absolute top-3 right-3 flex items-center gap-2">
+          <select
+            id="provider-select"
+            value={provider}
+            onChange={(e) => setProvider(e.target.value as 'gemini' | 'overshoot')}
+            className="bg-white/90 text-[#423E3B] text-xs font-bold px-2 py-1 rounded-lg border border-[#E5DFD9] focus:outline-none focus:ring-2 focus:ring-[#E78A62]"
+            aria-label="Select AI provider"
+          >
+            <option value="gemini">Gemini</option>
+            <option value="overshoot">Overshoot</option>
+          </select>
+          {isAnalyzing && (
+            <Badge variant="info" pulse>
+              <Activity className="w-3 h-3 mr-1" />
+              Monitoring
+            </Badge>
+          )}
+        </div>
+
+        {/* Last result display */}
+        {lastResult && (
+          <div className="absolute bottom-16 left-3 right-3 bg-white/90 backdrop-blur-sm rounded-xl p-3 border border-[#E5DFD9]">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${getStatusColor()}`} />
+                <span className={`text-sm font-bold ${lastResult.emergency ? 'text-red-600' : 'text-emerald-600'}`}>
+                  {lastResult.emergency ? `${lastResult.type.toUpperCase()} DETECTED` : 'Normal'}
+                </span>
+              </div>
+              <span className="text-[#8E867E] text-xs font-medium">
+                {Math.round(lastResult.confidence * 100)}% confidence
+              </span>
+            </div>
+            <p className="text-[#423E3B] text-xs mt-1 truncate">{lastResult.description}</p>
+          </div>
+        )}
+
+        {/* Controls */}
+        <div className="absolute bottom-3 left-3 right-3 flex gap-2">
+          <Button
+            variant={isStreaming ? 'danger' : 'secondary'}
+            onClick={isStreaming ? stopCamera : startCamera}
+            className="flex-1"
+            aria-label={isStreaming ? 'Stop camera' : 'Start camera'}
+          >
+            {isStreaming ? (
+              <>
+                <CameraOff className="w-4 h-4" />
+                Stop Camera
+              </>
+            ) : (
+              <>
+                <Camera className="w-4 h-4" />
+                Start Camera
+              </>
+            )}
+          </Button>
+
+          <Button
+            variant={isAnalyzing ? 'warning' : 'success'}
+            onClick={toggleAnalysis}
+            className="flex-1"
+            aria-label={isAnalyzing ? 'Stop AI analysis' : 'Start AI analysis'}
+          >
+            <Activity className="w-4 h-4" />
+            {isAnalyzing ? 'Stop Analysis' : 'Start Analysis'}
+          </Button>
+        </div>
       </div>
 
-      <div className="mt-4 px-1">
-        <h3 className="text-lg font-bold text-[#423E3B]">{location}</h3>
+      {/* Info bar below video */}
+      <div className="mt-4 flex items-center justify-between px-1">
+        <div>
+          <h3 className="text-lg font-bold text-[#423E3B]">{location}</h3>
+          <p className="text-[10px] font-bold text-[#8E867E] tracking-wider uppercase">
+            AI Provider: {provider === 'gemini' ? 'Google Gemini' : 'Overshoot Vision'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
+            isAnalyzing 
+              ? 'bg-emerald-100 text-emerald-700' 
+              : 'bg-[#F8F5F2] text-[#8E867E]'
+          }`}>
+            {isAnalyzing ? 'Active' : 'Standby'}
+          </div>
+        </div>
       </div>
     </div>
   );
