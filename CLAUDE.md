@@ -20,6 +20,7 @@ npm run lint      # Run ESLint
 ### Tech Stack
 - **Frontend:** Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4
 - **AI/Vision:** Google Gemini 3 Flash (`gemini-3-flash-preview`) for emergency classification
+- **Vital Signs:** Presage SmartSpectra for contactless heart rate & breathing measurement from video
 - **Risk Prediction:** Wood Wide AI for patient triage and ML model training
 - **Object Detection:** YOLO service (optional, for person detection)
 - **Voice:** ElevenLabs API for multilingual text-to-speech alerts
@@ -66,6 +67,7 @@ Patient Rooms → CameraCard.tsx (vitals display)
 - `POST /api/triage` - Wood Wide AI triage recommendations
 - `POST /api/livekit` - LiveKit token generation
 - `* /api/woodwide/[[...path]]` - Proxy to Wood Wide AI backend
+- `GET /api/smartspectra` - SmartSpectra health check and configuration
 
 ### Core Types
 ```typescript
@@ -171,3 +173,32 @@ Optional:
 - `WOODWIDE_API_KEY` - Wood Wide AI authentication
 - `YOLO_SERVICE_URL` - Person detection service (default: http://localhost:8000)
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Database persistence
+
+SmartSpectra (Contactless Vital Signs):
+- `NEXT_PUBLIC_SMARTSPECTRA_ENABLED` - Enable SmartSpectra integration (true/false)
+- `NEXT_PUBLIC_SMARTSPECTRA_GATEWAY_URL` - WebSocket gateway URL (default: ws://localhost:8080/ws)
+- `NEXT_PUBLIC_SMARTSPECTRA_HUD_URL` - HUD video stream URL (default: http://localhost:8080/hud.mjpg)
+- `SMARTSPECTRA_API_KEY` - SmartSpectra API key from https://physiology.presagetech.com
+- `SMARTSPECTRA_GATEWAY_URL` - HTTP gateway URL for API proxy (default: http://localhost:8080)
+
+### SmartSpectra Setup
+
+SmartSpectra by Presage Technologies enables contactless measurement of vital signs (heart rate, breathing rate, HRV) from video using camera analysis of facial blood flow changes.
+
+**Requirements:**
+1. SmartSpectra OnPrem `physiology_server` running locally (C++ binary)
+2. MetricsGateway (Node.js) serving WebSocket at configured port
+3. API key from Presage Technologies
+
+**Data Flow:**
+```
+Camera → physiology_server (C++) → Redis → MetricsGateway (Node.js)
+  → WebSocket (ws://localhost:8080/ws) → VitalsPanel.tsx
+  → Real-time heart rate, breathing rate, HRV display
+```
+
+**Metrics Available:**
+- Heart Rate (BPM) - from facial blood flow analysis
+- Breathing Rate (/min) - from chest/facial movement
+- HRV (ms) - heart rate variability
+- SpO2 (%) - estimated oxygen saturation

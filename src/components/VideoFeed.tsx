@@ -441,6 +441,7 @@ export default function VideoFeed({
 
         try {
           // Use TensorFlow.js promise-based API
+          if (!tfjsDetector) return;
           const faces = await tfjsDetector.estimateFaces(video);
 
           if (faces.length > 0 && faces[0].keypoints) {

@@ -4,6 +4,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import Sidebar from '../../components/Sidebar';
 import VideoFeed from '../../components/VideoFeed';
 import AlertHistory from '../../components/AlertHistory';
+import VitalsPanel from '../../components/VitalsPanel';
 import { AnalysisResult, Alert } from '../../types';
 
 const RealTimePage: React.FC = () => {
@@ -215,7 +216,7 @@ const RealTimePage: React.FC = () => {
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Main Video Feed */}
-                    <div className="lg:col-span-2">
+                    <div className="lg:col-span-2 space-y-6">
                         <VideoFeed
                             location="Primary Monitor"
                             isAnalyzing={isAnalyzing}
@@ -224,6 +225,9 @@ const RealTimePage: React.FC = () => {
                             autoStart={true}
                             enableFaceMesh={true}
                         />
+                        
+                        {/* SmartSpectra Vital Signs Panel */}
+                        <VitalsPanel />
                     </div>
 
                     {/* Alert History Panel */}

@@ -112,9 +112,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, emailId: data?.id });
   } catch (error) {
     console.error('[Email] Error:', error);
-    // Log the alert details even if there's an error
-    console.log('[Email] Alert attempted for:', { type, location, timestamp });
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
