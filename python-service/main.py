@@ -1,12 +1,12 @@
 """
 MediWatch YOLO Detection Service - Optimized for Speed
-Fast person detection with bounding boxes and face landmarks
+Fast person detection with bounding boxes, face landmarks, and tracking
 """
 
 import base64
 import io
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Dict, Tuple
 import numpy as np
 from PIL import Image
 from fastapi import FastAPI, HTTPException
@@ -14,6 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from ultralytics import YOLO
 import cv2
+from collections import defaultdict
+import time
 
 app = FastAPI(title="MediWatch YOLO Service")
 
@@ -24,6 +26,98 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Simple person tracker state
+class PersonTracker:
+    def __init__(self, max_age: float = 2.0, iou_threshold: float = 0.3):
+        self.tracks: Dict[int, Dict] = {}  # track_id -> {box, last_seen, history}
+        self.next_id = 1
+        self.max_age = max_age  # seconds before track is removed
+        self.iou_threshold = iou_threshold
+    
+    def _iou(self, box1: Tuple[float, float, float, float], 
+             box2: Tuple[float, float, float, float]) -> float:
+        """Calculate IoU between two boxes (x, y, w, h format, normalized)"""
+        x1, y1, w1, h1 = box1
+        x2, y2, w2, h2 = box2
+        
+        # Convert to x1, y1, x2, y2
+        ax1, ay1, ax2, ay2 = x1, y1, x1 + w1, y1 + h1
+        bx1, by1, bx2, by2 = x2, y2, x2 + w2, y2 + h2
+        
+        # Intersection
+        ix1 = max(ax1, bx1)
+        iy1 = max(ay1, by1)
+        ix2 = min(ax2, bx2)
+        iy2 = min(ay2, by2)
+        
+        if ix2 <= ix1 or iy2 <= iy1:
+            return 0.0
+        
+        inter_area = (ix2 - ix1) * (iy2 - iy1)
+        area1 = w1 * h1
+        area2 = w2 * h2
+        union_area = area1 + area2 - inter_area
+        
+        return inter_area / union_area if union_area > 0 else 0.0
+    
+    def update(self, detections: List[Dict]) -> List[Dict]:
+        """Update tracks with new detections and return tracked persons"""
+        current_time = time.time()
+        
+        # Remove stale tracks
+        stale_ids = [
+            tid for tid, track in self.tracks.items()
+            if current_time - track['last_seen'] > self.max_age
+        ]
+        for tid in stale_ids:
+            del self.tracks[tid]
+        
+        # Match detections to existing tracks using IoU
+        matched_tracks = set()
+        results = []
+        
+        for det in detections:
+            det_box = (det['x'], det['y'], det['width'], det['height'])
+            best_match = None
+            best_iou = self.iou_threshold
+            
+            for tid, track in self.tracks.items():
+                if tid in matched_tracks:
+                    continue
+                track_box = track['box']
+                iou = self._iou(det_box, track_box)
+                if iou > best_iou:
+                    best_iou = iou
+                    best_match = tid
+            
+            if best_match is not None:
+                # Update existing track
+                matched_tracks.add(best_match)
+                self.tracks[best_match]['box'] = det_box
+                self.tracks[best_match]['last_seen'] = current_time
+                self.tracks[best_match]['history'].append(det_box)
+                # Keep only last 10 positions for motion analysis
+                if len(self.tracks[best_match]['history']) > 10:
+                    self.tracks[best_match]['history'].pop(0)
+                det['track_id'] = best_match
+            else:
+                # Create new track
+                det['track_id'] = self.next_id
+                self.tracks[self.next_id] = {
+                    'box': det_box,
+                    'last_seen': current_time,
+                    'history': [det_box]
+                }
+                self.next_id += 1
+            
+            results.append(det)
+        
+        return results
+
+
+# Initialize tracker
+person_tracker = PersonTracker()
 
 # Load optimized YOLO model
 print("Loading YOLO model...")
@@ -57,6 +151,7 @@ class BoundingBox(BaseModel):
     label: Optional[str] = None
     confidence: float
     landmarks: Optional[List[FaceLandmark]] = None
+    track_id: Optional[int] = None  # Unique ID for tracking across frames
 
 
 class AnalysisRequest(BaseModel):
@@ -67,6 +162,7 @@ class AnalysisRequest(BaseModel):
 class AnalysisResponse(BaseModel):
     persons: List[BoundingBox]
     timestamp: str
+    tracked_count: int = 0  # Number of actively tracked persons
 
 
 def decode_image(base64_string: str) -> np.ndarray:
@@ -120,25 +216,25 @@ def detect_face_landmarks(image: np.ndarray, box: dict) -> List[FaceLandmark]:
         return []
 
 
-def detect_persons(image: np.ndarray) -> List[BoundingBox]:
-    """Fast person detection with YOLO"""
+def detect_persons(image: np.ndarray) -> Tuple[List[BoundingBox], int]:
+    """Fast person detection with YOLO and tracking"""
     if model is None:
-        return []
+        return [], 0
     
     try:
         img_h, img_w = image.shape[:2]
         
-        # Run YOLO with optimized settings
+        # Run YOLO with optimized settings for speed
         results = model.predict(
             image,
             conf=0.25,
             classes=[0],  # Person class only
             verbose=False,
             half=False,  # Use FP32 for compatibility
-            imgsz=640,
+            imgsz=480,  # Smaller size for faster inference
         )
         
-        persons = []
+        detections = []
         
         for result in results:
             for box in result.boxes:
@@ -148,20 +244,36 @@ def detect_persons(image: np.ndarray) -> List[BoundingBox]:
                 box_data = {'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2}
                 landmarks = detect_face_landmarks(image, box_data)
                 
-                persons.append(BoundingBox(
-                    x=float(x1 / img_w),
-                    y=float(y1 / img_h),
-                    width=float((x2 - x1) / img_w),
-                    height=float((y2 - y1) / img_h),
-                    label=f"Person {len(persons) + 1}",
-                    confidence=conf,
-                    landmarks=landmarks if landmarks else None
-                ))
+                detections.append({
+                    'x': float(x1 / img_w),
+                    'y': float(y1 / img_h),
+                    'width': float((x2 - x1) / img_w),
+                    'height': float((y2 - y1) / img_h),
+                    'confidence': conf,
+                    'landmarks': landmarks
+                })
         
-        return persons
+        # Apply tracking
+        tracked_detections = person_tracker.update(detections)
+        
+        # Convert to BoundingBox objects
+        persons = []
+        for det in tracked_detections:
+            persons.append(BoundingBox(
+                x=det['x'],
+                y=det['y'],
+                width=det['width'],
+                height=det['height'],
+                label=f"Person {det.get('track_id', len(persons) + 1)}",
+                confidence=det['confidence'],
+                landmarks=det.get('landmarks'),
+                track_id=det.get('track_id')
+            ))
+        
+        return persons, len(person_tracker.tracks)
     except Exception as e:
         print(f"Detection error: {e}")
-        return []
+        return [], 0
 
 
 @app.get("/")
@@ -176,14 +288,15 @@ async def health():
 
 @app.post("/detect", response_model=AnalysisResponse)
 async def detect(request: AnalysisRequest):
-    """Fast person detection endpoint"""
+    """Fast person detection endpoint with tracking"""
     try:
         image = decode_image(request.frame)
-        persons = detect_persons(image)
+        persons, tracked_count = detect_persons(image)
         
         return AnalysisResponse(
             persons=persons,
-            timestamp=datetime.now(timezone.utc).isoformat()
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            tracked_count=tracked_count
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

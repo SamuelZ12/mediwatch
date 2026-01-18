@@ -20,6 +20,7 @@ export interface BoundingBox {
   confidence?: number;  // detection confidence
   landmarks?: FaceLandmark[];  // face landmarks
   keypoints?: FaceLandmark[];  // pose keypoints
+  track_id?: number;  // unique ID for tracking across frames
 }
 
 export interface AnalysisResult {
