@@ -7,7 +7,7 @@ import { CameraRoom } from '../types';
 
 const INITIAL_ROOMS: CameraRoom[] = [
   { id: '1', name: 'James Wilson', roomCode: 'Ward-A / R101', stats: { heartRate: 72, oxygen: 98, status: 'Normal' }, isRecording: true },
-  { id: '2', name: 'Sarah Parker', roomCode: 'Ward-A / R102', stats: { heartRate: 88, oxygen: 96, status: 'Normal' }, isRecording: true },
+  { id: '2', name: 'Kevin Durant', roomCode: 'Ward-A / R102', stats: { heartRate: 88, oxygen: 96, status: 'Normal' }, isRecording: true },
   { id: '3', name: 'Robert Chen', roomCode: 'Ward-B / R201', stats: { heartRate: 104, oxygen: 92, status: 'Warning' }, isRecording: true },
   { id: '4', name: 'Maria Garcia', roomCode: 'Ward-B / R202', stats: { heartRate: 68, oxygen: 99, status: 'Normal' }, isRecording: true },
   { id: '5', name: 'Elena Kostov', roomCode: 'ICU / R001', stats: { heartRate: 112, oxygen: 88, status: 'Critical' }, isRecording: true },

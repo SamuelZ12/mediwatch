@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { CameraRoom } from '../types';
 import RiskBadge from './ui/RiskBadge';
+import SimulatedCameraFeed from './SimulatedCameraFeed';
 
 interface CameraCardProps {
     room: CameraRoom;
@@ -8,6 +9,7 @@ interface CameraCardProps {
 }
 
 const CameraCard: React.FC<CameraCardProps> = ({ room, riskScore }) => {
+    const [videoError, setVideoError] = useState(false);
     const isCritical = room.stats.status === 'Critical';
     const isWarning = room.stats.status === 'Warning';
     const displayRiskScore = riskScore ?? room.riskScore;
@@ -33,11 +35,24 @@ const CameraCard: React.FC<CameraCardProps> = ({ room, riskScore }) => {
                     </span>
                 </div>
 
-                <div className="absolute inset-0 flex items-center justify-center opacity-40">
-                    <svg className="w-12 h-12 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                </div>
+                {videoError ? (
+                    <SimulatedCameraFeed
+                        roomId={room.id}
+                        patientName={room.name}
+                        roomCode={room.roomCode}
+                        status={room.stats.status}
+                    />
+                ) : (
+                    <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="absolute inset-0 w-full h-full object-cover"
+                        src={`/videos/rooms/room-${room.id}.mp4`}
+                        onError={() => setVideoError(true)}
+                    />
+                )}
             </div>
 
             <div className="flex justify-between items-start mb-3 px-1">

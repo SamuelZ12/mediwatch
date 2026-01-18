@@ -100,7 +100,7 @@ export default function OvershootVideoFeed({
           analysisResult.confidence = 0.8;
         } else if (lowerResult.includes('chest') || lowerResult.includes('heart')) {
           analysisResult.emergency = true;
-          analysisResult.type = 'heart_attack';
+          analysisResult.type = 'distress';
           analysisResult.confidence = 0.8;
         } else if (lowerResult.includes('seiz') || lowerResult.includes('shak') || lowerResult.includes('convuls')) {
           analysisResult.emergency = true;
@@ -149,7 +149,7 @@ export default function OvershootVideoFeed({
       setIsAnalyzing(false);
       setIsStreaming(false);
     }
-  }, [onEmergencyDetected, parseResult, triggerFlash]);
+  }, [onEmergencyDetected, triggerFlash]);
 
   const stopAnalysis = useCallback(() => {
     if (overshootRef.current) {
