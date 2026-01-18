@@ -14,15 +14,28 @@ Analyze this image for any medical emergencies or concerning situations. Look fo
 5. DISTRESS - Signs of pain, panic, or need for immediate assistance
 6. NORMAL - No emergency detected, person appears fine
 
+Also detect all visible persons in the image and provide their bounding box coordinates as normalized values (0-1) where:
+- x, y: top-left corner position (0-1)
+- width, height: box dimensions (0-1)
+
 Respond in JSON format only:
 {
   "emergency": boolean,
   "type": "fall" | "choking" | "seizure" | "unconscious" | "distress" | "normal",
   "confidence": number between 0 and 1,
-  "description": "Brief description of what you observe"
+  "description": "Brief description of what you observe",
+  "persons": [
+    {
+      "x": number (0-1),
+      "y": number (0-1),
+      "width": number (0-1),
+      "height": number (0-1),
+      "label": "Person 1" or similar
+    }
+  ]
 }
 
-Be conservative - only flag true emergencies with high confidence. False positives are better than missed emergencies.`;
+If no persons are detected, return an empty array for "persons". Be conservative - only flag true emergencies with high confidence. False positives are better than missed emergencies.`;
 
 export async function analyzeFrame(base64Image: string): Promise<AnalysisResult> {
   const startTime = performance.now();
@@ -52,6 +65,7 @@ export async function analyzeFrame(base64Image: string): Promise<AnalysisResult>
         confidence: 0,
         description: 'Unable to analyze frame',
         timestamp: new Date(),
+        persons: [],
       };
     }
 
@@ -75,6 +89,7 @@ export async function analyzeFrame(base64Image: string): Promise<AnalysisResult>
       confidence: parsed.confidence,
       description: parsed.description,
       timestamp: new Date(),
+      persons: parsed.persons || [],
     };
   } catch (error) {
     console.error('Gemini analysis error:', error);
@@ -84,6 +99,7 @@ export async function analyzeFrame(base64Image: string): Promise<AnalysisResult>
       confidence: 0,
       description: 'Analysis error occurred',
       timestamp: new Date(),
+      persons: [],
     };
   }
 }

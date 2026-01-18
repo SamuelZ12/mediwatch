@@ -6,6 +6,22 @@ export type EmergencyType =
   | 'distress'
   | 'normal';
 
+export interface FaceLandmark {
+  x: number;  // normalized 0-1
+  y: number;  // normalized 0-1
+}
+
+export interface BoundingBox {
+  x: number;      // normalized 0-1
+  y: number;      // normalized 0-1
+  width: number;  // normalized 0-1
+  height: number; // normalized 0-1
+  label?: string;
+  confidence?: number;  // detection confidence
+  landmarks?: FaceLandmark[];  // face landmarks
+  keypoints?: FaceLandmark[];  // pose keypoints
+}
+
 export interface AnalysisResult {
   emergency: boolean;
   type: EmergencyType;
@@ -13,6 +29,7 @@ export interface AnalysisResult {
   description: string;
   timestamp: Date;
   frameData?: string;
+  persons?: BoundingBox[];  // detected person locations
 }
 
 export interface Alert {

@@ -92,3 +92,69 @@ export function getAlertText(
   const template = VOICE_TEMPLATES[emergencyType][language];
   return template.replace('{location}', location);
 }
+
+export async function generateStartupMessage(
+  language: 'en' | 'es' | 'zh' = 'en'
+): Promise<Buffer | null> {
+  const messages: Record<string, string> = {
+    en: 'MediWatch monitoring system activated. Real-time analysis is now running.',
+    es: 'Sistema de monitoreo MediWatch activado. El análisis en tiempo real está funcionando.',
+    zh: 'MediWatch监控系统已激活。实时分析正在运行。',
+  };
+
+  const text = messages[language];
+
+  try {
+    const audioStream = await getClient().textToSpeech.convert('JBFqnCBsd6RMkjVDRZzb', {
+      text,
+      modelId: 'eleven_multilingual_v2',
+      outputFormat: 'mp3_44100_128',
+    });
+
+    // Convert ReadableStream to buffer
+    const reader = audioStream.getReader();
+    const chunks: Uint8Array[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
+    }
+
+    return Buffer.concat(chunks);
+  } catch (error) {
+    console.error('ElevenLabs TTS error:', error);
+    return null;
+  }
+}
+
+export async function generateCustomText(
+  text: string
+): Promise<Buffer | null> {
+  if (!text || text.trim().length === 0) {
+    return null;
+  }
+
+  try {
+    const audioStream = await getClient().textToSpeech.convert('JBFqnCBsd6RMkjVDRZzb', {
+      text,
+      modelId: 'eleven_multilingual_v2',
+      outputFormat: 'mp3_44100_128',
+    });
+
+    // Convert ReadableStream to buffer
+    const reader = audioStream.getReader();
+    const chunks: Uint8Array[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
+    }
+
+    return Buffer.concat(chunks);
+  } catch (error) {
+    console.error('ElevenLabs TTS error:', error);
+    return null;
+  }
+}

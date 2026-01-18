@@ -1,23 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateVoiceAlert } from '@/lib/elevenlabs';
+import { generateVoiceAlert, generateCustomText } from '@/lib/elevenlabs';
 import type { EmergencyType } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
-    const { type, location, language = 'en' } = await request.json();
+    const { type, location, language = 'en', customText } = await request.json();
 
-    if (!type || !location) {
-      return NextResponse.json(
-        { error: 'Missing type or location' },
-        { status: 400 }
+    let audioBuffer: Buffer | null;
+
+    // Support custom text for startup messages
+    if (customText) {
+      audioBuffer = await generateCustomText(customText);
+    } else {
+      if (!type || !location) {
+        return NextResponse.json(
+          { error: 'Missing type or location' },
+          { status: 400 }
+        );
+      }
+
+      audioBuffer = await generateVoiceAlert(
+        type as EmergencyType,
+        location,
+        language
       );
     }
-
-    const audioBuffer = await generateVoiceAlert(
-      type as EmergencyType,
-      location,
-      language
-    );
 
     if (!audioBuffer) {
       return NextResponse.json(

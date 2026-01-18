@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import Sidebar from '../../components/Sidebar';
 import VideoFeed from '../../components/VideoFeed';
 import AlertHistory from '../../components/AlertHistory';
@@ -9,6 +9,78 @@ import { AnalysisResult, Alert } from '../../types';
 const RealTimePage: React.FC = () => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [alerts, setAlerts] = useState<Alert[]>([]);
+    const lastAnnouncedRef = useRef<{ type: string; timestamp: number } | null>(null);
+    const startupAnnouncedRef = useRef(false);
+    const audioQueueRef = useRef<HTMLAudioElement[]>([]);
+
+    // Play TTS audio from API
+    const playTTSAlert = useCallback(async (type: string, location: string) => {
+        try {
+            const response = await fetch('/api/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type, location, language: 'en' }),
+            });
+
+            if (!response.ok) {
+                console.error('TTS API error:', response.status);
+                return;
+            }
+
+            const audioBlob = await response.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+
+            // Clean up URL after playback
+            audio.addEventListener('ended', () => {
+                URL.revokeObjectURL(audioUrl);
+                // Remove from queue
+                audioQueueRef.current = audioQueueRef.current.filter(a => a !== audio);
+            });
+
+            // Add to queue and play
+            audioQueueRef.current.push(audio);
+            await audio.play();
+        } catch (error) {
+            console.error('Failed to play TTS alert:', error);
+        }
+    }, []);
+
+    // Play startup message
+    const playStartupMessage = useCallback(async () => {
+        if (startupAnnouncedRef.current) return;
+        startupAnnouncedRef.current = true;
+
+        try {
+            const response = await fetch('/api/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    type: 'normal', 
+                    location: 'Primary Monitor', 
+                    language: 'en',
+                    customText: 'MediWatch monitoring system activated. Real-time analysis is now running.'
+                }),
+            });
+
+            if (!response.ok) {
+                // Fallback to direct API call if custom text not supported
+                // For now, we'll skip startup message if API doesn't support it
+                console.log('Startup message skipped (API may not support custom text)');
+                return;
+            }
+
+            const audioBlob = await response.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+            audio.addEventListener('ended', () => {
+                URL.revokeObjectURL(audioUrl);
+            });
+            await audio.play();
+        } catch (error) {
+            console.error('Failed to play startup message:', error);
+        }
+    }, []);
 
     const handleEmergencyDetected = useCallback((result: AnalysisResult) => {
         const newAlert: Alert = {
@@ -21,7 +93,23 @@ const RealTimePage: React.FC = () => {
             acknowledged: false,
         };
         setAlerts(prev => [newAlert, ...prev]);
-    }, []);
+
+        // Auto-announce emergency with debouncing (prevent spam)
+        if (result.emergency && result.type !== 'normal') {
+            const now = Date.now();
+            const lastAnnounced = lastAnnouncedRef.current;
+            const DEBOUNCE_MS = 5000; // 5 seconds between same-type announcements
+
+            if (
+                !lastAnnounced ||
+                lastAnnounced.type !== result.type ||
+                now - lastAnnounced.timestamp > DEBOUNCE_MS
+            ) {
+                lastAnnouncedRef.current = { type: result.type, timestamp: now };
+                playTTSAlert(result.type, 'Primary Monitor');
+            }
+        }
+    }, [playTTSAlert]);
 
     const handleAcknowledge = useCallback((alertId: string) => {
         setAlerts(prev =>
@@ -32,14 +120,19 @@ const RealTimePage: React.FC = () => {
     }, []);
 
     const handlePlayAudio = useCallback((alert: Alert) => {
-        const message = `${alert.type} detected at ${alert.location}. ${alert.description}`;
-        if ('speechSynthesis' in window) {
-            const utterance = new SpeechSynthesisUtterance(message);
-            utterance.rate = 0.9;
-            utterance.pitch = 1;
-            speechSynthesis.speak(utterance);
+        playTTSAlert(alert.type, alert.location);
+    }, [playTTSAlert]);
+
+    // Play startup message when analysis begins
+    useEffect(() => {
+        if (isAnalyzing && !startupAnnouncedRef.current) {
+            // Small delay to ensure system is ready
+            const timer = setTimeout(() => {
+                playStartupMessage();
+            }, 1000);
+            return () => clearTimeout(timer);
         }
-    }, []);
+    }, [isAnalyzing, playStartupMessage]);
 
     return (
         <div className="flex min-h-screen">
@@ -75,6 +168,7 @@ const RealTimePage: React.FC = () => {
                             isAnalyzing={isAnalyzing}
                             setIsAnalyzing={setIsAnalyzing}
                             onEmergencyDetected={handleEmergencyDetected}
+                            autoStart={true}
                         />
                     </div>
 
