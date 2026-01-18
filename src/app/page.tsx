@@ -10,7 +10,7 @@ const INITIAL_ROOMS: CameraRoom[] = [
   { id: '2', name: 'Kevin Durant', roomCode: 'Ward-A / R102', stats: { heartRate: 88, oxygen: 96, status: 'Normal' }, isRecording: true },
   { id: '3', name: 'Robert Chen', roomCode: 'Ward-B / R201', stats: { heartRate: 104, oxygen: 92, status: 'Warning' }, isRecording: true },
   { id: '4', name: 'Maria Garcia', roomCode: 'Ward-B / R202', stats: { heartRate: 68, oxygen: 99, status: 'Normal' }, isRecording: true },
-  { id: '5', name: 'Elena Kostov', roomCode: 'ICU / R001', stats: { heartRate: 112, oxygen: 88, status: 'Critical' }, isRecording: true },
+  { id: '5', name: 'Leonardo DiCaprio', roomCode: 'ICU / R001', stats: { heartRate: 112, oxygen: 88, status: 'Critical' }, isRecording: true },
   { id: '6', name: 'David Smith', roomCode: 'ICU / R002', stats: { heartRate: 75, oxygen: 97, status: 'Normal' }, isRecording: true },
   { id: '7', name: 'Linda Miller', roomCode: 'Ward-C / R301', stats: { heartRate: 82, oxygen: 96, status: 'Normal' }, isRecording: true },
   { id: '8', name: 'Kevin Durant', roomCode: 'Ward-C / R302', stats: { heartRate: 90, oxygen: 95, status: 'Normal' }, isRecording: true },
