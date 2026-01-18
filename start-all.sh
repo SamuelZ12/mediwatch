@@ -7,6 +7,13 @@ echo ""
 # Start Python service in background
 echo "1️⃣  Starting Python YOLO Detection Service..."
 cd python-service
+
+# Check if virtual environment exists, run setup if not
+if [ ! -d "venv" ]; then
+    echo "   ⚠️  Virtual environment not found. Running setup..."
+    ./setup.sh
+fi
+
 source venv/bin/activate
 python main.py &
 PYTHON_PID=$!
